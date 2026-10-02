@@ -1,0 +1,1 @@
+"""SolarSight application package."""

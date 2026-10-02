@@ -158,6 +158,13 @@ env.bak/
 venv.bak/
 
 # Spyder project settings
+.idea/
+.vscode/settings.json
+
+# SolarSight runtime data
+data/*.db
+data/*.sqlite
+data/*.sqlite3
 .spyderproject
 .spyproject
 
