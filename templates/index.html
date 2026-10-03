@@ -8,9 +8,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v={{ asset_v }}" />
   </head>
-  <body>
+  <body data-view="{{ view }}">
     <header class="topbar">
       <a class="brand" href="/" aria-label="SolarSight home">
         <span class="brand-mark" aria-hidden="true"></span>
@@ -18,8 +18,8 @@
       </a>
       <div class="topbar-meta">
         <nav class="view-tabs" aria-label="Main views">
-          <button class="view-tab is-active" data-view="landing" type="button">01 / INTRO</button>
-          <button class="view-tab" data-view="calculator" type="button">02 / CALCULATOR</button>
+          <a href="/" class="view-tab{% if view != 'calculator' %} is-active{% endif %}">01 / INTRO</a>
+          <a href="/calculator" class="view-tab{% if view == 'calculator' %} is-active{% endif %}">02 / CALCULATOR</a>
         </nav>
         <span class="eyebrow">ENERGY PLANNING / SOFIA</span>
         <span class="system-dot"><i></i> SYSTEM READY</span>
@@ -27,46 +27,116 @@
       </div>
     </header>
 
-    <main class="shell">
+    <!-- ── 01  INTRO ─────────────────────────────────────────────── -->
+    <div id="landing-wrap" {% if view == "calculator" %}hidden{% endif %}>
       <section id="landing-view" class="landing-view reveal">
-        <div>
-          <p class="kicker">SOLARSIGHT / ENERGY INTELLIGENCE</p>
+        <div class="landing-hero">
+          <p class="kicker">SOLARSIGHT / ATANASOFF__48 / ENERGIA OKOLO NAS</p>
           <h1>Plan the energy<br /><em>before it arrives.</em></h1>
+          <p class="hero-sub">A forecast isn't useful unless it tells you what to do. SolarSight predicts solar production, simulates your battery, and turns numbers into decisions.</p>
+          <a href="/calculator" class="primary-button landing-button"><span>Open calculator</span><b>↗</b></a>
         </div>
-        <div class="landing-copy">
-          <p class="intro-copy">Configure every panel group, map the site, and see when to use, store, or send energy back to the grid.</p>
-          <button id="open-calculator" class="primary-button landing-button" type="button"><span>Open calculator</span><b>↗</b></button>
+
+        <div class="landing-cards">
+          <article class="intro-card">
+            <div class="intro-card-icon">☼</div>
+            <h3>Solar forecast</h3>
+            <p>Uses Open-Meteo weather data and pvlib physics to predict hourly AC power output for 1 to 30 days ahead. Configure every panel group separately.</p>
+            <ul class="intro-feature-list">
+              <li>Hourly AC output per panel group</li>
+              <li>Daily kWh totals</li>
+              <li>Cloud &amp; temperature effects</li>
+            </ul>
+          </article>
+          <article class="intro-card">
+            <div class="intro-card-icon">⌁</div>
+            <h3>Battery simulation</h3>
+            <p>Simulates your battery's state of charge hour by hour against your household load. See exactly when you charge, discharge, and grid-import.</p>
+            <ul class="intro-feature-list">
+              <li>Hourly SoC tracking</li>
+              <li>Configurable DoD &amp; efficiency</li>
+              <li>Grid export detection</li>
+            </ul>
+          </article>
+          <article class="intro-card">
+            <div class="intro-card-icon">◎</div>
+            <h3>Decision layer</h3>
+            <p>Rule-based recommendations telling you what to do each hour: run the dishwasher, pre-charge the battery, or hold off and buy cheap grid energy.</p>
+            <ul class="intro-feature-list">
+              <li>Use / Direct / Store / Optimize</li>
+              <li>Timestamped actions</li>
+              <li>Honest about simulated data</li>
+            </ul>
+          </article>
+          <article class="intro-card intro-card-wide">
+            <div class="intro-card-icon">⟶</div>
+            <h3>How it works</h3>
+            <p>Pick your site on the map → configure your panels, battery, and daily load → hit <em>Run energy forecast</em>. The app fetches real weather, runs the physics, and gives you a 24 h–30 day plan.</p>
+            <div class="intro-pipeline">
+              <span>Location</span><b>→</b>
+              <span>Weather</span><b>→</b>
+              <span>Physics (pvlib)</span><b>→</b>
+              <span>Battery sim</span><b>→</b>
+              <span class="pipeline-end">Decision</span>
+            </div>
+          </article>
         </div>
       </section>
+    </div>
 
-      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+    <!-- ── 02  CALCULATOR ──────────────────────────────────────────── -->
+    <section id="calculator-view" {% if view != "calculator" %}hidden{% endif %}>
 
-      <section id="calculator-view" class="calculator-view" hidden>
-      <div class="calculator-topline"><div><p class="kicker">CALCULATOR / SITE MODEL</p><h1 class="calculator-title">Your energy map.</h1></div><button id="back-to-intro" class="text-button" type="button">← Intro</button></div>
-      <section class="workspace reveal delay-1">
-        <div class="map-panel panel">
-          <div class="panel-heading">
-            <div>
-              <p class="section-label">01 / SITE LOCATION</p>
-              <h2>Where are your panels?</h2>
-            </div>
-            <span class="live-pill"><i></i> MAP</span>
-          </div>
-          <div id="map" class="map"></div>
-          <div class="coordinates">
-            <label>LAT <input id="lat" type="number" step="0.0001" value="42.6977" /></label>
-            <label>LON <input id="lon" type="number" step="0.0001" value="23.3219" /></label>
-            <span class="location-note">Click map to move site</span>
+      <!-- Full-viewport map stage -->
+      <div class="map-stage">
+        <div id="map"></div>
+        <div id="cloud-overlay" class="cloud-overlay"></div>
+
+        <!-- Top-left: back + live coords -->
+        <div class="map-hud map-hud-tl">
+          <a href="/" class="hud-back">← INTRO</a>
+          <div class="hud-location">
+            <span id="hud-lat">42.6977°N</span>
+            <span id="hud-lon">23.3219°E</span>
           </div>
         </div>
 
-        <form id="forecast-form" class="config-panel panel">
-          <div class="panel-heading">
-            <div>
-              <p class="section-label">02 / SYSTEM PROFILE</p>
-              <h2>What are we modelling?</h2>
-            </div>
+        <!-- Top-right: sun compass -->
+        <div class="map-hud map-hud-tr" id="sun-hud">
+          <div class="sun-hud-label">SUN POSITION</div>
+          <canvas id="sun-canvas" width="90" height="90"></canvas>
+          <div class="sun-hud-vals">
+            <span><small>ALT</small><strong id="sun-alt">—</strong></span>
+            <span><small>AZ</small><strong id="sun-az">—</strong></span>
+          </div>
+        </div>
+
+        <!-- Bottom-left: live weather chips -->
+        <div class="map-hud map-hud-bl" id="weather-hud">
+          <div class="weather-chip">
+            <span class="chip-icon">☁</span>
+            <span id="chip-cloud-val">—</span>
+          </div>
+          <div class="weather-chip">
+            <canvas id="wind-canvas" width="22" height="22"></canvas>
+            <span id="chip-wind-val">—</span>
+          </div>
+          <div class="weather-chip">
+            <span class="chip-icon">🌡</span>
+            <span id="chip-temp-val">—</span>
+          </div>
+        </div>
+
+        <!-- Right sidebar: configuration form -->
+        <form id="forecast-form" class="map-sidebar">
+          <div class="sidebar-header">
+            <span class="section-label" style="margin:0">SYSTEM PROFILE</span>
             <span id="horizon-label" class="config-number">3 DAYS</span>
+          </div>
+
+          <div class="sidebar-coords">
+            <label>LAT<input id="lat" type="number" step="0.0001" value="42.6977" /></label>
+            <label>LON<input id="lon" type="number" step="0.0001" value="23.3219" /></label>
           </div>
 
           <fieldset>
@@ -78,51 +148,81 @@
           <fieldset>
             <legend>Battery storage</legend>
             <div class="field-grid three">
-              <label>Capacity <input id="battery-capacity" type="number" min="0" step="0.1" value="10" /><small>kWh</small></label>
-              <label>Starting charge <input id="initial-soc" type="number" min="0" step="0.1" value="5" /><small>kWh</small></label>
-              <label>Max power <input id="battery-power" type="number" min="0" step="0.1" value="5" /><small>kW</small></label>
+              <label>Capacity<input id="battery-capacity" type="number" min="0" step="0.1" value="10" /><small>kWh</small></label>
+              <label>Start SoC<input id="initial-soc" type="number" min="0" step="0.1" value="5" /><small>kWh</small></label>
+              <label>Max power<input id="battery-power" type="number" min="0" step="0.1" value="5" /><small>kW</small></label>
             </div>
           </fieldset>
 
           <fieldset>
-            <legend>Household load</legend>
+            <legend>Load &amp; horizon</legend>
             <div class="field-grid two">
-              <label>Daily consumption <input id="daily-load" type="number" min="0.1" step="0.1" value="12" /><small>kWh / day</small></label>
-              <label>Forecast horizon <select id="days"><option value="1">Daily / 1 day</option><option value="3" selected>3 days</option><option value="7">Weekly / 7 days</option><option value="30">Monthly / 30 days</option></select></label>
+              <label>Daily load<input id="daily-load" type="number" min="0.1" step="0.1" value="12" /><small>kWh/day</small></label>
+              <label>Horizon
+                <select id="days">
+                  <option value="1">Daily / 1 day</option>
+                  <option value="3" selected>3 days</option>
+                  <option value="7">Weekly / 7 days</option>
+                  <option value="30">Monthly / 30 days</option>
+                </select>
+              </label>
             </div>
           </fieldset>
 
-          <button id="forecast-button" class="primary-button" type="submit"><span>Run energy forecast</span><b>↗</b></button>
+          <button id="forecast-button" class="primary-button" type="submit">
+            <span>Run energy forecast</span><b>↗</b>
+          </button>
+
+          <div id="scroll-hint" class="scroll-down-hint" hidden>
+            <button type="button" id="scroll-to-results" class="scroll-hint-btn">↓ Results ready — scroll down</button>
+          </div>
         </form>
-      </section>
+      </div>
 
-      <section class="status-row reveal delay-2" aria-label="Forecast status">
-        <div class="status-item"><span class="status-icon weather-icon">☼</span><span><small>WEATHER</small><strong id="weather-status">READY</strong></span></div>
-        <div class="status-item"><span class="status-icon">◎</span><span><small>CALIBRATION</small><strong id="calibration-status">NOT CALIBRATED</strong></span></div>
-        <div class="status-item"><span class="status-icon">⌁</span><span><small>READINGS</small><strong id="readings-status">NONE CONNECTED</strong></span></div>
-        <div class="status-time"><small>LAST MODEL RUN</small><strong id="last-run">NOT RUN YET</strong></div>
-      </section>
+      <!-- Results section below the map fold -->
+      <div class="results-wrap">
+        <div id="error-banner" class="error-banner" role="alert" hidden></div>
 
-      <section id="results" class="results reveal delay-3">
-        <div class="section-intro"><div><p class="section-label">03 / MODEL OUTPUT</p><h2>Energy outlook</h2></div><span id="result-badge" class="result-badge">AWAITING FORECAST</span></div>
-        <div class="chart-grid">
-          <article class="chart-card chart-wide"><div class="chart-title"><span>Hourly flow</span><small>POWER / W</small></div><canvas id="hourly-chart"></canvas><div class="legend"><span class="legend-solar">Solar production</span><span class="legend-load">Household load</span></div></article>
-          <article class="chart-card"><div class="chart-title"><span>Daily yield</span><small>ENERGY / KWH</small></div><canvas id="daily-chart"></canvas></article>
-          <article class="chart-card"><div class="chart-title"><span>Battery charge</span><small>STATE / KWH</small></div><canvas id="soc-chart"></canvas></article>
-        </div>
-      </section>
+        <section class="status-row" aria-label="Forecast status">
+          <div class="status-item"><span class="status-icon">☼</span><span><small>WEATHER</small><strong id="weather-status">READY</strong></span></div>
+          <div class="status-item"><span class="status-icon">◎</span><span><small>CALIBRATION</small><strong id="calibration-status">NOT CALIBRATED</strong></span></div>
+          <div class="status-item"><span class="status-icon">⌁</span><span><small>READINGS</small><strong id="readings-status">NONE CONNECTED</strong></span></div>
+          <div class="status-time"><small>LAST MODEL RUN</small><strong id="last-run">NOT RUN YET</strong></div>
+        </section>
 
-      <section class="recommendations reveal delay-4">
-        <div class="section-intro"><div><p class="section-label">04 / DECISION LAYER</p><h2>What should happen next?</h2></div><span class="decision-note">NUMBERS → ACTIONS</span></div>
-        <div id="recommendation-list" class="recommendation-list"><div class="empty-state">Run a forecast to turn production numbers into decisions.</div></div>
-      </section>
-      </section>
-    </main>
+        <section id="results" class="results">
+          <div class="section-intro">
+            <div><p class="section-label">03 / MODEL OUTPUT</p><h2>Energy outlook</h2></div>
+            <span id="result-badge" class="result-badge">AWAITING FORECAST</span>
+          </div>
+          <div class="chart-grid">
+            <article class="chart-card chart-wide">
+              <div class="chart-title"><span>Hourly flow</span><small>POWER / W</small></div>
+              <canvas id="hourly-chart"></canvas>
+              <div class="legend"><span class="legend-solar">Solar production</span><span class="legend-load">Household load</span></div>
+            </article>
+            <article class="chart-card"><div class="chart-title"><span>Daily yield</span><small>ENERGY / KWH</small></div><canvas id="daily-chart"></canvas></article>
+            <article class="chart-card"><div class="chart-title"><span>Battery charge</span><small>STATE / KWH</small></div><canvas id="soc-chart"></canvas></article>
+          </div>
+        </section>
+
+        <section class="recommendations">
+          <div class="section-intro">
+            <div><p class="section-label">04 / DECISION LAYER</p><h2>What should happen next?</h2></div>
+            <span class="decision-note">NUMBERS → ACTIONS</span>
+          </div>
+          <div id="recommendation-list" class="recommendation-list">
+            <div class="empty-state">Run a forecast to turn production numbers into decisions.</div>
+          </div>
+        </section>
+      </div>
+    </section>
 
     <footer><span>SOLARSIGHT / PROTOTYPE</span><span>WEATHER + PHYSICS + DECISIONS</span></footer>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script>window.SOLARSIGHT_CONFIG = { cartoApiKey: {{ carto_api_key | tojson }} };</script>
-    <script src="{{ url_for('static', path='app.js') }}"></script>
+    <script src="{{ url_for('static', path='app.js') }}?v={{ asset_v }}"></script>
   </body>
 </html>

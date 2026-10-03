@@ -24,12 +24,22 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 app.include_router(api_router)
 
 
+def _render(request: Request, view: str) -> HTMLResponse:
+    asset_v = int(max(p.stat().st_mtime for p in (BASE_DIR / "static").iterdir()))
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "carto_api_key": CARTO_API_KEY, "view": view, "asset_v": asset_v},
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
-    """Render the SolarSight dashboard shell."""
-    return templates.TemplateResponse(
-        "index.html", {"request": request, "carto_api_key": CARTO_API_KEY}
-    )
+    return _render(request, "landing")
+
+
+@app.get("/calculator", response_class=HTMLResponse)
+def calculator(request: Request) -> HTMLResponse:
+    return _render(request, "calculator")
 
 
 @app.get("/api/health")
