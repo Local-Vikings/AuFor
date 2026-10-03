@@ -6,7 +6,10 @@ turns the weather forecast into a number *and a decision*, and it gets more accu
 
 Built for the ATANASOFF\_\_48 hackathon (theme: *Energy around us*; subtopics Use / Direct / Optimize / Store).
 
-![The calculator: a map with the cloud forecast and wind, and the system profile on the right](docs/screenshots/map-clouds-wind.jpg)
+<p>
+<img src="docs/screenshots/hero-light.jpg" alt="The calculator in the light theme: a map with wind streaks and the system profile on the right" width="49%">
+<img src="docs/screenshots/hero-dark.jpg" alt="The calculator in the dark theme: the cloud forecast layer over the map, a time slider and the system profile" width="49%">
+</p>
 
 ## What it does
 
@@ -14,7 +17,7 @@ Built for the ATANASOFF\_\_48 hackathon (theme: *Energy around us*; subtopics Us
 |---|---|
 | **Forecast** | Hourly AC power, daily and monthly kWh for any period from 1 to 365 days. Several panel groups with their own tilt, azimuth and inverter. |
 | **Weather that matters** | Cloud cover, temperature and wind from Open-Meteo, shown next to what a clear sky would give, so you see **how much energy clouds cost** (hour by hour). |
-| **Cloud and wind map** | A forecast layer that follows the map view: clouds, wind arrows and animated flow, with a time slider (play it forward 16 days). Hovering a chart moves the map in time. |
+| **Cloud and wind map** | A forecast layer that follows the map view: clouds, wind arrows and animated flow, with a time slider (play it forward 7 days). Hovering a chart moves the map in time. |
 | **Battery** | Hourly charge, discharge and grid import or export, with depth of discharge, efficiencies and a power limit. |
 | **Decisions** | Rule-based cards, each with the hour, the reason and the kWh effect: **Use** (best surplus window), **Store** (weak tomorrow), **Direct** (battery full before noon), **Optimize** (better tilt or azimuth), **Warning** (cloud dip in the peak hours). |
 | **Plain-language explanation** | Always a template written from the numbers; optionally rewritten by an LLM, which may only use numbers from the data (anything else is thrown away). |
@@ -59,7 +62,7 @@ Open <http://127.0.0.1:8000> (intro) and <http://127.0.0.1:8000/calculator> (the
 ### A five-minute demo
 
 1. Open `/calculator`, press **Run energy forecast**. Scroll down: energy, cloud loss, charts, decision cards, explanation.
-2. Press **play** on the map timeline and switch on **Wind** and **Flow**. Move the mouse over a chart.
+2. Press **play** on the map timeline (clouds and the animated wind **Flow** are on by default; switch on **Wind** for arrows). Move the mouse over a chart.
 3. Run `python scripts/fake_readings.py` (some daylight hours of today must already be over). The *Live readings* chart fills with SIMULATED points, and the next forecast
    shows `CALIBRATED · PR 0.78 · SIMULATED DATA`. Run it again with `--step-minutes 5` and the PR moves closer to the
    fake system's true 0.736. `--reset` starts over.
@@ -68,13 +71,14 @@ Open <http://127.0.0.1:8000> (intro) and <http://127.0.0.1:8000/calculator> (the
 
 ## Screenshots
 
-Taken with the bundled mock weather (the page labels it `MOCK (SIMULATED)`) and simulated readings, so they are
-reproducible. Regenerate them with `python scripts/make_screenshots.py` (add `--mock` to work offline; it needs Playwright).
+The two pictures at the top use real weather. The others were taken with the bundled mock weather (the page labels it
+`MOCK (SIMULATED)`) and simulated readings, so they are reproducible. Regenerate those with
+`python scripts/make_screenshots.py` (add `--mock` to work offline; it needs Playwright).
 
 | | |
 |---|---|
 | ![Intro](docs/screenshots/intro.jpg) | ![Wind flow on the map](docs/screenshots/map-wind-flow.jpg) |
-| ![Live readings vs forecast](docs/screenshots/live-readings.png) | ![Dark theme](docs/screenshots/map-dark.jpg) |
+| ![Live readings vs forecast](docs/screenshots/live-readings.png) | ![Cloud layer on the map](docs/screenshots/map-clouds-wind.jpg) |
 
 ![Decision cards and the explanation](docs/screenshots/recommendations.png)
 
@@ -107,6 +111,7 @@ reproducible. Regenerate them with `python scripts/make_screenshots.py` (add `--
 | `LLM_ENABLED`, `LLM_API_KEY`, `LLM_MODEL` | switch on the AI explanation (Anthropic API). Off by default; the template is used without them |
 | `READINGS_API_KEY` | if set, writes to `/api/readings` need the header `X-API-Key` (use it whenever the server is reachable from outside) |
 | `DATABASE_PATH` | readings database, default `data/readings.db` |
+| `WEATHER_CACHE_DIR` | saved Open-Meteo answers, default `data/weather_cache` (next to the database) |
 | `SOLAR_LIB_PATH` | path of a custom `libsolarsight` build |
 | `WEATHER_PROVIDER`, `TOMORROW_API_KEY` | reserved for a Tomorrow.io fallback, **not implemented yet** (Open-Meteo is the only provider) |
 | `LOG_LEVEL` | `INFO` by default |
@@ -116,7 +121,8 @@ reproducible. Regenerate them with `python scripts/make_screenshots.py` (add `--
 | Endpoint | |
 |---|---|
 | `POST /api/forecast` | system + battery + load + `days` (1-365) + `resolution` (`hourly`, `daily`, `monthly`) |
-| `GET /api/cloud-field` | cloud and wind grid for the visible map, up to 16 days |
+| `GET /api/cloud-field` | cloud and wind grid for the visible map (the page asks for 7 days, the API allows 16) |
+| `GET /api/current-weather` | weather now at a site, for the map chips (cached on the server) |
 | `POST /api/readings`, `GET /api/readings`, `GET /api/readings/summary` | plug-in measurements (`power_w`, `soc_kwh`, `cloud_fraction`); simulated rows stay labelled |
 | `POST /api/camera/analyze` | measure a sky photo on the server, only if the PyTorch model is installed there (otherwise 501) |
 | `POST /api/explain` | the AI explanation for a forecast just made; falls back to the template |
@@ -163,6 +169,9 @@ ESP32 or Pi can post `power_w` to `/api/readings` the same way (not built yet).
   from a simulated system with a fixed PR of 0.736 and are labelled `SIMULATED` everywhere.
 * The forecast is **not validated against real measured production**. Only the bounds and PVGIS above are checked.
 * Beyond 16 days the weather is last year's weather for the same dates: an estimate, not a forecast.
+* Open-Meteo's free tier allows 10,000 calls a day and one map view costs 135 (one per grid point). The server keeps
+  every answer on disk: it is reused for 15 minutes (30 for the map), and if Open-Meteo fails it is served for up
+  to 24 hours, labelled `CACHED ... AGO`.
 * The cloud and wind map is a **weather-model forecast on a 15 x 9 grid**, not satellite imagery.
 * The *Optimize* kWh figure is a clear-sky yearly upper bound, not a prediction.
 * Calibration learns the PR of the system configured in the page and assumes the readings come from that system.

@@ -191,3 +191,15 @@ def test_with_the_mock_flag_the_whole_forecast_works_with_the_network_blocked(tm
 def test_the_blocked_network_really_blocks_real_weather(tmp_path) -> None:
     result = run_offline("0", tmp_path)  # the contrast: without the flag the same call must fail cleanly
     assert result.returncode == 0 and result.stdout.startswith("502") and "Open-Meteo" in result.stdout, result.stdout + result.stderr
+
+
+# ---- defaults of the page ----
+
+def test_the_map_starts_with_clouds_and_flow_and_the_theme_follows_the_system() -> None:
+    page = client.get("/calculator").text
+    assert 'id="toggle-clouds" class="tl-chip is-active"' in page
+    assert 'id="toggle-flow" class="tl-chip is-active"' in page
+    assert 'id="toggle-wind" class="tl-chip"' in page  # arrows are optional
+    assert "prefers-color-scheme: dark" in page and 'localStorage.getItem("aufor-theme")' in page  # applied before the first paint
+    script = client.get("/static/app.js").text
+    assert "windOn = false, flowOn = true" in script and "systemPrefersDark" in script

@@ -165,6 +165,7 @@ venv.bak/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+data/weather_cache/
 .spyderproject
 .spyproject
 

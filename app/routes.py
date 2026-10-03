@@ -16,6 +16,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app import calibration, llm, readings, vision
+from app import weather as weather_module
 from app import config as settings
 from app.advisor import recommend
 from app.clouds import fetch_cloud_field, site_bounds
@@ -178,6 +179,31 @@ def cloud_field(
         return fetch_cloud_field(south, west, north, east, hours).to_dict()
     except WeatherError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+CURRENT_FIELDS = ("temperature_2m", "cloud_cover", "wind_speed_10m", "wind_direction_10m")
+MOCK_CURRENT = {"temperature_2m": 18.0, "cloud_cover": 0, "wind_speed_10m": 2.5, "wind_direction_10m": 270}
+
+
+@router.get("/current-weather")
+def current_weather(
+    lat: float = Query(ge=-90, le=90), lon: float = Query(ge=-180, le=180)
+) -> dict:
+    """Weather now at a site, for the map chips. Goes through the server's cache, so page loads cost no quota."""
+    if weather_module.USE_MOCK_WEATHER:
+        return {**MOCK_CURRENT, "source": "mock weather"}
+    params = {  # rounded to about 1 km so nearby clicks share a cache entry
+        "latitude": round(lat, 2), "longitude": round(lon, 2), "current": ",".join(CURRENT_FIELDS),
+        "timezone": "auto", "forecast_days": 1, "wind_speed_unit": "ms",
+    }
+    try:
+        payload, stale_age = weather_module.cached_json(weather_module.OPEN_METEO_URL, params)
+        current = {name: payload["current"][name] for name in CURRENT_FIELDS}
+    except WeatherError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    except (KeyError, TypeError) as error:
+        raise HTTPException(status_code=502, detail="Open-Meteo returned no current weather") from error
+    return {**current, "source": "open-meteo" if stale_age is None else weather_module.cached_label(stale_age)}
 
 
 

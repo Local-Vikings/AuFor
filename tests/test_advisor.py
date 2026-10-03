@@ -2,13 +2,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import advisor
+from app import advisor, solar
 from app.models import PanelConfig
 
 SOFIA = (42.6977, 23.3219)
 HOUR = datetime(2026, 10, 3, 7, 0, tzinfo=timezone.utc)
 
-if advisor.best_orientation(*SOFIA, 2026, 0.0) is None:
+if solar.optimize(*SOFIA, 2026, 35, 180) is None:
     pytest.skip("native lib not built", allow_module_level=True)
 
 
@@ -47,20 +47,23 @@ def test_only_bad_group():
 
 
 def test_no_lib_no_crash(monkeypatch):
-    monkeypatch.setattr(advisor, "best_orientation", lambda *a: None)
+    monkeypatch.setattr(advisor, "optimize", lambda *a: None)
     assert advisor.optimize_rule(*SOFIA, [panel(35, 0)], HOUR) == []
 
 
 def test_south_beats_north():
-    assert advisor.annual_poa(*SOFIA, 2026, 35, 180, 0) > advisor.annual_poa(*SOFIA, 2026, 35, 0, 0)
+    south, *_ = solar.optimize(*SOFIA, 2026, 35, 180)
+    north, *_ = solar.optimize(*SOFIA, 2026, 35, 0)
+    assert south > north
 
 
 def test_best_orientation_sofia():
-    tilt, az, kwh = advisor.best_orientation(*SOFIA, 2026, 0)
+    now, tilt, az, best = solar.optimize(*SOFIA, 2026, 0, 180)
     assert az == pytest.approx(180, abs=10)
     assert 25 <= tilt <= 45
+    assert best > now
 
 
 def test_bad_year_raises():
     with pytest.raises(ValueError):
-        advisor.annual_poa(*SOFIA, 1900, 35, 180, 0)
+        solar.optimize(*SOFIA, 1900, 35, 180)

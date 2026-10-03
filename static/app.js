@@ -189,16 +189,14 @@ function drawWindArrow(canvas, direction) {
   ctx.restore();
 }
 
-/* ── Current weather: Open-Meteo, no API key needed ─────────────── */
+/* ── Current weather: through the server, which caches Open-Meteo ─ */
 async function fetchCurrentWeather(lat, lon) {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current=temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m&timezone=auto&forecast_days=1`;
-    const res = await fetch(url);
+    const res = await fetch(`/api/current-weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
     if (!res.ok) return;
-    const data = await res.json();
-    if (!data.current) return;
-    currentWeatherData = data.current;
-    applyWeatherOverlays(data.current, lat, lon);
+    const current = await res.json();
+    currentWeatherData = current;
+    applyWeatherOverlays(current, lat, lon);
   } catch (_) { /* silent — overlays stay neutral */ }
 }
 
@@ -354,6 +352,8 @@ function calibrationLabel(meta) {
 
 function weatherStatus(sources) {
   if (sources.includes("mock weather")) return "MOCK (SIMULATED)";
+  const cached = sources.find((x) => x.startsWith("open-meteo (cached"));
+  if (cached) return `CACHED ${cached.match(/[\d.]+ h/)[0].toUpperCase()} AGO (OPEN-METEO DOWN)`;
   if (sources.some((x) => x.startsWith("climatology"))) return "LIVE + CLIMATE AVERAGE";
   return "LIVE (OPEN-METEO)";
 }
@@ -507,7 +507,11 @@ function updateStatus(data) {
 }
 
 /* ── Error banner ────────────────────────────────────────────────── */
-function showError(msg) { const b = document.getElementById("error-banner"); b.textContent = msg; b.hidden = false; }
+function showError(msg) {
+  const b = document.getElementById("error-banner");
+  b.textContent = msg; b.hidden = false;
+  b.scrollIntoView({ block: "nearest", behavior: "smooth" });  // it sits under the Run button, maybe below the sidebar's fold
+}
 function clearError()   { document.getElementById("error-banner").hidden = true; }
 
 /* ── Forecast ────────────────────────────────────────────────────── */
@@ -567,10 +571,10 @@ function initMap() {
 /* ── Cloud forecast field: map overlay, timeline, chart sync ─────── */
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 let cloudField = null, cloudImage = null, timeIndex = 0, playTimer = null;
-let cloudsOn = true, windOn = true, flowOn = false, fieldTimer = null, pillTimer = null;
+let cloudsOn = true, windOn = false, flowOn = true, fieldTimer = null, pillTimer = null;  // default map layers: clouds and flow
 let fieldView = null, fieldRequest = 0, uvCache = new Map();
 let cursorEpoch = null;  // follows the mouse on the charts, even past the end of the cloud field
-const CLOUD_FIELD_HOURS = 384;  // the whole 16-day forecast range
+const CLOUD_FIELD_HOURS = 168;  // 7 days: each map view costs one Open-Meteo call per grid point (135) of the free 10,000 a day
 
 function bilinear(grid, row, col) {
   const r0 = Math.max(0, Math.min(grid.length - 2, Math.floor(row)));
@@ -937,6 +941,7 @@ async function loadCloudField(view) {
   if (overlay) overlay.style.background = "transparent";
   if (windMarker) { windMarker.remove(); windMarker = null; }
   setTimeIndex(Math.max(0, nearestFieldIndex(keepEpoch, Infinity)));
+  if (String(cloudField.source).startsWith("open-meteo (cached")) showHoverPill("Open-Meteo is unreachable: showing the last cloud forecast saved on the server", 9000);
 }
 
 const crosshairPlugin = {
@@ -1037,22 +1042,47 @@ function applyPreset(button) {
 }
 
 /* ── Theme ───────────────────────────────────────────────────────── */
-function toggleTheme() {
-  document.body.classList.toggle("dark-theme");
-  localStorage.setItem("aufor-theme", document.body.classList.contains("dark-theme") ? "dark" : "light");
+/* The theme follows the system setting until the toggle is used; then the saved choice wins. */
+function systemPrefersDark() {
+  return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+}
+
+function savedTheme() {
+  try {
+    const saved = localStorage.getItem("aufor-theme");
+    return saved === "dark" || saved === "light" ? saved : null;
+  } catch (error) { return null; }
+}
+
+function wantsDark() {
+  const saved = savedTheme();
+  return saved ? saved === "dark" : systemPrefersDark();
+}
+
+function applyTheme(dark) {
+  document.body.classList.toggle("dark-theme", dark);
   if (map) map.invalidateSize();
   updateSunNow(getLat(), getLon());
   renderCloudFrame();
-  if (currentWeatherData) {
+  if (lastForecast) { drawCharts(lastForecast); refreshReadingsChart(); }  // charts pick their colours when drawn
+  if (currentWeatherData && !cloudField) {
     drawWindArrow(document.getElementById("wind-canvas"), currentWeatherData.wind_direction_10m ?? 0);
     placeWindMarker(getLat(), getLon(), currentWeatherData.wind_speed_10m ?? 0, currentWeatherData.wind_direction_10m ?? 0);
   }
 }
 
+function toggleTheme() {
+  const dark = !document.body.classList.contains("dark-theme");
+  try { localStorage.setItem("aufor-theme", dark ? "dark" : "light"); } catch (error) { /* private mode: the choice just is not kept */ }
+  applyTheme(dark);
+}
+
 /* ── Boot ────────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
   addPanelGroup();
-  if (localStorage.getItem("aufor-theme") === "dark") document.body.classList.add("dark-theme");
+  applyTheme(wantsDark());
+  const scheme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (scheme && scheme.addEventListener) scheme.addEventListener("change", () => { if (!savedTheme()) applyTheme(systemPrefersDark()); });
 
   initView();
 

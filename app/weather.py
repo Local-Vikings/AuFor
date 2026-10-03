@@ -6,14 +6,29 @@ not calculate solar power, simulate batteries, or translate errors into HTTP res
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
+import os
+import time as clock
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 import pandas as pd
 
-from app.config import OPEN_METEO_MAX_FORECAST_DAYS, USE_MOCK_WEATHER, WEATHER_TIMEOUT_SECONDS
+from app.config import (
+    OPEN_METEO_MAX_FORECAST_DAYS,
+    USE_MOCK_WEATHER,
+    WEATHER_CACHE_DIR,
+    WEATHER_CACHE_SECONDS,
+    WEATHER_STALE_MAX_SECONDS,
+    WEATHER_TIMEOUT_SECONDS,
+)
+
+logger = logging.getLogger(__name__)
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -134,6 +149,64 @@ def _get_json(url: str, params: dict[str, Any]) -> dict[str, Any]:
         raise WeatherError(f"Unable to fetch weather from Open-Meteo: {error}") from error
 
 
+def _cache_path(url: str, params: dict[str, Any]) -> Path:
+    key = hashlib.sha1(json.dumps([url, params], sort_keys=True, default=str).encode()).hexdigest()
+    return Path(WEATHER_CACHE_DIR) / f"{key}.json"
+
+
+def _read_cache(path: Path) -> tuple[dict[str, Any], float] | None:
+    """(payload, age in seconds) of a cached answer, or None if there is no readable one."""
+    try:
+        age = clock.time() - path.stat().st_mtime
+        return json.loads(path.read_text()), age
+    except (OSError, ValueError):
+        return None
+
+
+def _write_cache(path: Path, payload: dict[str, Any]) -> None:
+    """Save an answer atomically and drop answers too old to be served even as a fallback."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload))
+        os.replace(temporary, path)
+        for old in path.parent.glob("*.json"):
+            if clock.time() - old.stat().st_mtime > WEATHER_STALE_MAX_SECONDS:
+                old.unlink(missing_ok=True)
+    except OSError as error:  # a read-only disk must not break the forecast
+        logger.warning("could not write the weather cache: %s", error)
+
+
+def cached_json(url: str, params: dict[str, Any], fresh_seconds: float = WEATHER_CACHE_SECONDS) -> tuple[dict[str, Any], float | None]:
+    """Open-Meteo JSON through a disk cache, so reloads and restarts do not spend the free daily quota.
+
+    Returns:
+        (payload, stale_age): stale_age is None for a live or fresh answer, or the age in seconds
+        of an older cached answer used because Open-Meteo failed (rate limit, no network).
+
+    Raises:
+        WeatherError: If Open-Meteo fails and no cached answer is young enough.
+    """
+    path = _cache_path(url, params)
+    saved = _read_cache(path)
+    if saved and saved[1] < fresh_seconds:
+        return saved[0], None
+    try:
+        payload = _get_json(url, params)
+    except WeatherError as error:
+        if saved is None or saved[1] > WEATHER_STALE_MAX_SECONDS:
+            raise
+        logger.warning("Open-Meteo failed (%s); using a cached answer %.0f min old", error, saved[1] / 60)
+        return saved[0], saved[1]
+    _write_cache(path, payload)
+    return payload, None
+
+
+def cached_label(stale_age: float) -> str:
+    """Source label for a forecast built from an older cached answer."""
+    return f"open-meteo (cached {stale_age / 3600:.1f} h ago, live request failed)"
+
+
 def _localize(naive: pd.DatetimeIndex, timezone: Any) -> pd.DatetimeIndex:
     """Attach a timezone, dropping wall-clock hours that do not exist or repeat (DST)."""
     return naive.tz_localize(timezone, ambiguous="NaT", nonexistent="NaT")
@@ -155,7 +228,7 @@ def _climatology(lat: float, lon: float, forecast: pd.DataFrame, days: int) -> p
         "timezone": "auto",
         "wind_speed_unit": "ms",
     }
-    archive = parse_weather(_get_json(OPEN_METEO_ARCHIVE_URL, params))
+    archive = parse_weather(cached_json(OPEN_METEO_ARCHIVE_URL, params, WEATHER_STALE_MAX_SECONDS)[0])  # the past does not change
     shifted = _localize(archive.index.tz_localize(None) + last_year, timezone)
     archive = archive.set_axis(shifted)
     archive = archive[archive.index.notna()]
@@ -196,8 +269,9 @@ def fetch_weather(lat: float, lon: float, days: int) -> pd.DataFrame:
         "timezone": "auto",
         "wind_speed_unit": "ms",
     }
-    frame = parse_weather(_get_json(OPEN_METEO_URL, params))
-    sources = ["open-meteo"]
+    payload, stale_age = cached_json(OPEN_METEO_URL, params)
+    frame = parse_weather(payload)
+    sources = ["open-meteo" if stale_age is None else cached_label(stale_age)]
     if days > OPEN_METEO_MAX_FORECAST_DAYS:
         frame = pd.concat([frame, _climatology(lat, lon, frame, days)])
         sources.append(CLIMATOLOGY_LABEL)

@@ -152,3 +152,44 @@ def test_real_path_builds_one_request_and_caches(monkeypatch: pytest.MonkeyPatch
     assert len(calls[0]["latitude"].split(",")) == CLOUD_FIELD_ROWS * CLOUD_FIELD_COLS
     assert calls[0]["timeformat"] == "unixtime" and calls[0]["past_days"] == 1 and calls[0]["forecast_days"] == 2
     clouds._CACHE.clear()
+
+
+def test_stale_field_is_served_and_labelled_when_open_meteo_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    lats, lons = clouds.view_axes(50.0, 8.0, 52.0, 11.0)
+    answers = [fake_payload(lats, lons, 24)]
+
+    def fake(url, params):
+        if not answers:
+            raise weather.WeatherError("Open-Meteo's free request limit is used up")
+        return answers.pop()
+
+    monkeypatch.setattr("app.weather.USE_MOCK_WEATHER", False)
+    monkeypatch.setattr(weather, "_get_json", fake)
+    clouds._CACHE.clear()
+    assert clouds.fetch_cloud_field(50.0, 8.0, 52.0, 11.0, 24).source == "open-meteo"
+    clouds._CACHE.clear()
+    monkeypatch.setattr("app.clouds.CLOUD_FIELD_CACHE_SECONDS", -1.0)  # the saved answer counts as old
+    response = client.get("/api/cloud-field", params={"south": 50.0, "west": 8.0, "north": 52.0, "east": 11.0, "hours": 24})
+    assert response.status_code == 200
+    assert response.json()["source"].startswith("open-meteo (cached")
+    assert not clouds._CACHE  # not kept in memory, so the next request tries Open-Meteo again
+
+
+def test_current_weather_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = client.get("/api/current-weather", params={"lat": 42.7, "lon": 23.3})
+    assert mock.status_code == 200 and mock.json()["source"] == "mock weather"
+
+    calls = []
+
+    def fake(url, params):
+        calls.append(params)
+        return {"current": {"temperature_2m": 11.3, "cloud_cover": 40, "wind_speed_10m": 5.8, "wind_direction_10m": 120}}
+
+    monkeypatch.setattr("app.weather.USE_MOCK_WEATHER", False)
+    monkeypatch.setattr(weather, "_get_json", fake)
+    first = client.get("/api/current-weather", params={"lat": 42.69771, "lon": 23.32191})
+    second = client.get("/api/current-weather", params={"lat": 42.6979, "lon": 23.3218})  # same 1 km cell
+    assert first.json() == second.json() == {"temperature_2m": 11.3, "cloud_cover": 40, "wind_speed_10m": 5.8,
+                                              "wind_direction_10m": 120, "source": "open-meteo"}
+    assert len(calls) == 1 and calls[0]["latitude"] == 42.7
+    assert client.get("/api/current-weather", params={"lat": 95, "lon": 0}).status_code == 422

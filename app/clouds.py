@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -184,6 +184,9 @@ def fetch_cloud_field(
         "timeformat": "unixtime",
         "wind_speed_unit": "ms",
     }
-    field = _fill_gaps(parse_cloud_field(weather._get_json(weather.OPEN_METEO_URL, params), lats, lons, hours))
+    payload, stale_age = weather.cached_json(weather.OPEN_METEO_URL, params, CLOUD_FIELD_CACHE_SECONDS)
+    field = _fill_gaps(parse_cloud_field(payload, lats, lons, hours))
+    if stale_age is not None:  # an older answer because Open-Meteo failed: label it, and retry next time
+        return replace(field, source=weather.cached_label(stale_age))
     _CACHE[key] = (time.monotonic(), field)
     return field

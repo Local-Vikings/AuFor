@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v={{ asset_v }}" />
   </head>
   <body data-view="{{ view }}">
+    <script>try { var t = localStorage.getItem("aufor-theme"); if (t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches)) document.body.classList.add("dark-theme"); } catch (e) {}</script>
     <header class="topbar">
       <a class="brand" href="/" aria-label="AuFor home">
         <span class="brand-mark" aria-hidden="true"></span>
@@ -21,8 +22,7 @@
           <a href="/" class="view-tab{% if view != 'calculator' %} is-active{% endif %}">01 / INTRO</a>
           <a href="/calculator" class="view-tab{% if view == 'calculator' %} is-active{% endif %}">02 / CALCULATOR</a>
         </nav>
-        <span class="eyebrow">ENERGY PLANNING / SOFIA</span>
-        <span class="system-dot"><i></i> SYSTEM READY</span>
+        <!-- <span class="eyebrow">ENERGY PLANNING</span> -->
         <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle dark theme">◐</button>
       </div>
     </header>
@@ -31,7 +31,7 @@
     <div id="landing-wrap" {% if view == "calculator" %}hidden{% endif %}>
       <section id="landing-view" class="landing-view reveal">
         <div class="landing-hero">
-          <p class="kicker">AUFOR / ATANASOFF__48 / ENERGIA OKOLO NAS</p>
+          <p class="kicker">AUFOR / ATANASOFF__48 / ЕНРГИЯТА ОКОЛО НАС</p>
           <h1>Plan the energy<br /><em>before it arrives.</em></h1>
           <p class="hero-sub">A forecast isn't useful unless it tells you what to do. AuFor predicts solar production, simulates your battery, and turns numbers into decisions.</p>
           <a href="/calculator" class="primary-button landing-button"><span>Open calculator</span><b>↗</b></a>
@@ -71,13 +71,9 @@
           <article class="intro-card intro-card-wide">
             <div class="intro-card-icon">⟶</div>
             <h3>How it works</h3>
-            <p>Pick your site on the map → configure your panels, battery, and daily load → hit <em>Run energy forecast</em>. The app fetches real weather, runs the physics, and gives you a 24 h–30 day plan.</p>
+            <p>Pick your site on the map -> configure your panels, battery, and daily load -> hit <em>Run energy forecast</em>. The app fetches real weather, runs the physics, and gives you a 24 h–30 day plan.</p>
             <div class="intro-pipeline">
-              <span>Location</span><b>→</b>
-              <span>Weather</span><b>→</b>
-              <span>Physics (pvlib)</span><b>→</b>
-              <span>Battery sim</span><b>→</b>
-              <span class="pipeline-end">Decision</span>
+
             </div>
           </article>
         </div>
@@ -141,8 +137,8 @@
           </div>
           <div class="tl-toggles">
             <button id="toggle-clouds" class="tl-chip is-active" type="button">Clouds</button>
-            <button id="toggle-wind" class="tl-chip is-active" type="button">Wind</button>
-            <button id="toggle-flow" class="tl-chip" type="button">Flow</button>
+            <button id="toggle-wind" class="tl-chip" type="button">Wind</button>
+            <button id="toggle-flow" class="tl-chip is-active" type="button">Flow</button>
           </div>
         </div>
         <div id="hover-pill" class="hover-pill" hidden></div>
@@ -206,6 +202,7 @@
           <button id="forecast-button" class="primary-button" type="submit">
             <span>Run energy forecast</span><b>↗</b>
           </button>
+          <div id="error-banner" class="error-banner" role="alert" hidden></div>
 
           <div id="scroll-hint" class="scroll-down-hint" hidden>
             <button type="button" id="scroll-to-results" class="scroll-hint-btn">↓ Results ready — scroll down</button>
@@ -215,7 +212,6 @@
 
       <!-- Results section below the map fold -->
       <div class="results-wrap">
-        <div id="error-banner" class="error-banner" role="alert" hidden></div>
 
         <section class="status-row" aria-label="Forecast status">
           <div class="status-item"><span class="status-icon">☼</span><span><small>WEATHER</small><strong id="weather-status">READY</strong></span></div>
@@ -259,7 +255,7 @@
         <section class="recommendations">
           <div class="section-intro">
             <div><p class="section-label">04 / DECISION LAYER</p><h2>What should happen next?</h2></div>
-            <span class="decision-note">NUMBERS → ACTIONS</span>
+            <span class="decision-note">NUMBERS -> ACTIONS</span>
           </div>
           <div id="recommendation-list" class="recommendation-list">
             <div class="empty-state">Run a forecast to turn production numbers into decisions.</div>
@@ -279,7 +275,7 @@
       </div>
     </section>
 
-    <footer><span>AUFOR / PROTOTYPE</span><span>WEATHER + PHYSICS + DECISIONS</span></footer>
+    <footer><span>AUFOR / PROTOTYPE</span><span>The Local Vikings</span></footer>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>

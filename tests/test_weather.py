@@ -238,3 +238,73 @@ def test_other_http_errors_name_the_status_without_the_url(monkeypatch: pytest.M
     with pytest.raises(weather.WeatherError, match="Open-Meteo answered HTTP 503") as caught:
         weather._get_json(weather.OPEN_METEO_URL, {})
     assert "http" not in str(caught.value).lower().replace("http 503", "")
+
+
+def _counting_fetch(monkeypatch: pytest.MonkeyPatch, payloads: list) -> list:
+    """Replace the network with a list of answers (an exception in it is raised); returns the call log."""
+    calls: list[dict] = []
+
+    def fake_get_json(url: str, params: dict) -> dict:
+        calls.append(params)
+        answer = payloads[min(len(calls), len(payloads)) - 1]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(weather, "_get_json", fake_get_json)
+    return calls
+
+
+def _age_cache(seconds: float) -> None:
+    for path in weather.Path(weather.WEATHER_CACHE_DIR).glob("*.json"):
+        stamp = path.stat().st_mtime - seconds
+        weather.os.utime(path, (stamp, stamp))
+
+
+def test_cache_reuses_a_fresh_answer_without_the_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _counting_fetch(monkeypatch, [{"a": 1}])
+    assert weather.cached_json(weather.OPEN_METEO_URL, {"x": 1}) == ({"a": 1}, None)
+    assert weather.cached_json(weather.OPEN_METEO_URL, {"x": 1}) == ({"a": 1}, None)
+    assert len(calls) == 1
+    weather.cached_json(weather.OPEN_METEO_URL, {"x": 2})  # other parameters, other entry
+    assert len(calls) == 2
+
+
+def test_cache_refreshes_an_old_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _counting_fetch(monkeypatch, [{"a": 1}, {"a": 2}])
+    weather.cached_json(weather.OPEN_METEO_URL, {"x": 1})
+    _age_cache(weather.WEATHER_CACHE_SECONDS + 1)
+    assert weather.cached_json(weather.OPEN_METEO_URL, {"x": 1}) == ({"a": 2}, None)
+    assert len(calls) == 2
+
+
+def test_cache_serves_a_stale_answer_when_open_meteo_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    _counting_fetch(monkeypatch, [{"a": 1}, weather.WeatherError("quota used up")])
+    weather.cached_json(weather.OPEN_METEO_URL, {"x": 1})
+    _age_cache(2 * 3600)
+    payload, stale_age = weather.cached_json(weather.OPEN_METEO_URL, {"x": 1})
+    assert payload == {"a": 1} and stale_age == pytest.approx(7200, abs=60)
+    assert weather.cached_label(stale_age) == "open-meteo (cached 2.0 h ago, live request failed)"
+
+
+def test_cache_does_not_serve_answers_older_than_the_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    _counting_fetch(monkeypatch, [{"a": 1}, weather.WeatherError("quota used up")])
+    weather.cached_json(weather.OPEN_METEO_URL, {"x": 1})
+    _age_cache(weather.WEATHER_STALE_MAX_SECONDS + 60)
+    with pytest.raises(weather.WeatherError, match="quota"):
+        weather.cached_json(weather.OPEN_METEO_URL, {"x": 1})
+
+
+def test_failure_without_a_cached_answer_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    _counting_fetch(monkeypatch, [weather.WeatherError("no network")])
+    with pytest.raises(weather.WeatherError, match="no network"):
+        weather.cached_json(weather.OPEN_METEO_URL, {"x": 1})
+
+
+def test_forecast_from_a_stale_cache_is_labelled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(weather, "USE_MOCK_WEATHER", False)
+    _counting_fetch(monkeypatch, [_hourly_payload("2026-10-03T00:00", "2026-10-05T23:00"), weather.WeatherError("HTTP 429")])
+    assert weather.fetch_weather(42.7, 23.3, 3).attrs["sources"] == ["open-meteo"]
+    _age_cache(3600)
+    sources = weather.fetch_weather(42.7, 23.3, 3).attrs["sources"]
+    assert sources == ["open-meteo (cached 1.0 h ago, live request failed)"]

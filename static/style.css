@@ -317,7 +317,7 @@ body.dark-theme .tag-ai { background: #1260cc; }
 .recommendation-effect strong { color: var(--blue); font-size: .8rem; }
 .badge { padding: 3px 6px; color: var(--blue); background: var(--blue-soft); font-family: "DM Mono", monospace; font-size: .52rem; text-transform: uppercase; }
 
-.error-banner { margin-bottom: 16px; padding: 11px 14px; border-left: 3px solid #c65b4b; color: #8b3025; background: #fff0ed; font-size: .74rem; }
+.error-banner { margin: 12px 0 0; padding: 11px 14px; border-left: 3px solid #c65b4b; color: #8b3025; background: #fff0ed; font-size: .74rem; }
 
 footer { display: flex; justify-content: space-between; padding: 18px 5vw; color: var(--muted); border-top: 1px solid var(--line); font-family: "DM Mono", monospace; font-size: .54rem; letter-spacing: .08em; }
 
@@ -388,9 +388,13 @@ body.dark-theme .scroll-hint-btn { color: #6aabff; border-color: #6aabff; backgr
 }
 @media (max-width: 900px) {
   .impact-row { grid-template-columns: 1fr 1fr; }
-  .map-stage { height: 60vh; }
+  /* the map becomes a band of height --map-h at the top and the form flows below it */
+  .map-stage { --map-h: 60vh; height: auto; overflow: visible; padding-top: var(--map-h); }
+  #map, .cloud-overlay { bottom: auto; height: var(--map-h); }
   .map-sidebar { position: relative; top:auto; right:auto; width:100%; height:auto; border-left:0; border-top:1px solid var(--line); box-shadow:none; max-height:none; }
   .map-hud-tr { right: 16px; }
+  .map-timeline { left: 10px; right: 10px; width: auto; bottom: auto; top: calc(var(--map-h) - 104px); }
+  .map-hud-bl { bottom: auto; top: calc(var(--map-h) - 168px); }
   .status-row { grid-template-columns: 1fr 1fr; }
   .status-time { grid-column: span 2; }
   .recommendation-list { grid-template-columns: 1fr 1fr; }
@@ -404,10 +408,10 @@ body.dark-theme .scroll-hint-btn { color: #6aabff; border-color: #6aabff; backgr
   .topbar { height: auto; min-height: 48px; padding-block: 9px; }
   .topbar-meta .eyebrow, .topbar-meta .system-dot { display: none; }
   .topbar-meta { gap: 8px; }
-  .map-stage { height: 55vh; }
+  .map-stage { --map-h: 55vh; }
   .map-hud-tl { top:10px; left:10px; }
   .map-hud-tr { top:10px; right:10px; }
-  .map-hud-bl { bottom:10px; left:10px; }
+  .map-hud-bl { left:10px; }
   .field-grid.three { grid-template-columns: 1fr 1fr; }
   .chart-grid { grid-template-columns: 1fr; }
   .chart-wide { grid-column: span 1; }

@@ -58,11 +58,12 @@ def take(url: str, out: Path, env: dict) -> None:
         page.evaluate(f"setTimeIndex({cloudiest})")
         page.wait_for_timeout(2200)
         print("cloudiest hour:", page.inner_text("#tl-time"), "|", page.inner_text("#tl-cloud"))
+        page.wait_for_timeout(1500)  # the default layers: clouds and the animated flow
         page.screenshot(path=str(out / "map-clouds-wind.jpg"), **jpeg)
-        page.click("#toggle-flow")
-        page.wait_for_timeout(2800)
+        page.click("#toggle-wind")   # add the arrows on top of the flow
+        page.wait_for_timeout(1500)
         page.screenshot(path=str(out / "map-wind-flow.jpg"), **jpeg)
-        page.click("#toggle-flow")
+        page.click("#toggle-wind")
 
         subprocess.run([sys.executable, str(ROOT / "scripts" / "fake_readings.py"), "--server", url, "--step-minutes", "10", "--seed", "1"],
                        env=env, capture_output=True, cwd=ROOT)

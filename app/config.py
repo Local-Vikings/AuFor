@@ -83,6 +83,11 @@ LLM_MAX_TOKENS = 300
 EXPLAIN_CACHE_SIZE = 64  # forecast summaries kept so the page can ask for the AI text afterwards
 EXPLAIN_CACHE_SECONDS = 3600.0
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/readings.db")
+# Open-Meteo answers are kept on disk: reused for WEATHER_CACHE_SECONDS (also across restarts) and,
+# when Open-Meteo fails (quota, no network), served for up to WEATHER_STALE_MAX_SECONDS, labelled as cached.
+WEATHER_CACHE_DIR = os.getenv("WEATHER_CACHE_DIR", os.path.join(os.path.dirname(DATABASE_PATH) or ".", "weather_cache"))
+WEATHER_CACHE_SECONDS = 900.0
+WEATHER_STALE_MAX_SECONDS = 24 * 3600.0
 READINGS_API_KEY = os.getenv("READINGS_API_KEY", "")  # if set, writes need the X-API-Key header
 CLOUD_ROI_RADIUS_PX = 150  # camera model: radius of the circle the cloud fraction is measured in
 CLOUD_MAX_IMAGE_BYTES = 10 * 1024 * 1024
