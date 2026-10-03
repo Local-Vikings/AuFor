@@ -68,18 +68,11 @@ def _declare(lib: ctypes.CDLL) -> None:
         lib.ss_metrics.argtypes = [_ARRAY, _ARRAY, _ARRAY, _INT] + [ctypes.POINTER(_DOUBLE)] * 3
 
 
-def _declare_optimizer(lib: ctypes.CDLL) -> None:
-    """Declare the T20 functions; an older library without them just disables Optimize."""
-    pointer = ctypes.POINTER(_DOUBLE)
-    optional = {
-        "ss_annual_poa_kwh_m2": [_DOUBLE, _DOUBLE, _INT, _DOUBLE, _DOUBLE, _DOUBLE, _DOUBLE, pointer],
-        "ss_optimal_orientation": [_DOUBLE, _DOUBLE, _INT] + [_DOUBLE] * 4 + [pointer] * 3,
-    }
-    for name, argtypes in optional.items():
-        function = getattr(lib, name, None)
-        if function is not None:
-            function.argtypes = argtypes
-            function.restype = _INT
+def _declare_optimizer(lib):
+
+    if hasattr(lib, "ss_optimize"):
+        lib.ss_optimize.argtypes = [_DOUBLE, _DOUBLE, _INT] + [_DOUBLE] * 5 + [_ARRAY]
+        lib.ss_optimize.restype = _INT
 
 
 _LIB = _load_library()
@@ -211,37 +204,18 @@ def irradiance_from_clouds(
 
 
 
-def _optimizer_available() -> bool:
-    return _LIB is not None and hasattr(_LIB, "ss_optimal_orientation")
 
 
-def annual_poa(
-    lat_deg: float, lon_deg: float, year: int, tilt_deg: float, azimuth_deg: float, cloud_pct: float
-) -> float | None:
-    """Clear-sky yearly plane-of-array energy in kWh/m2; None without the native core (T20)."""
-    if not _optimizer_available():
+
+def optimize(lat, lon, year, tilt, az):
+    
+    if _LIB is None or not hasattr(_LIB, "ss_optimize"):
         return None
-    result = _DOUBLE()
-    status = _LIB.ss_annual_poa_kwh_m2(
-        lat_deg, lon_deg, year, tilt_deg, azimuth_deg, DEFAULT_ALBEDO, cloud_pct, ctypes.byref(result)
-    )
-    _check(status, "annual_poa")
-    return result.value
-
-
-def best_orientation(
-    lat_deg: float, lon_deg: float, year: int, cloud_pct: float
-) -> tuple[float, float, float] | None:
-    """Best (tilt_deg, azimuth_deg, kWh/m2) over a yearly grid search; None without the native core."""
-    if not _optimizer_available():
-        return None
-    tilt, azimuth, kwh = _DOUBLE(), _DOUBLE(), _DOUBLE()
-    status = _LIB.ss_optimal_orientation(
-        lat_deg, lon_deg, year, DEFAULT_ALBEDO, cloud_pct, OPT_TILT_STEP_DEG, OPT_AZIMUTH_STEP_DEG,
-        ctypes.byref(tilt), ctypes.byref(azimuth), ctypes.byref(kwh),
-    )
-    _check(status, "best_orientation")
-    return tilt.value, azimuth.value, kwh.value
+    out = np.zeros(4)
+    status = _LIB.ss_optimize(lat, lon, year, DEFAULT_ALBEDO, tilt, az,
+                              OPT_TILT_STEP_DEG, OPT_AZIMUTH_STEP_DEG, out)
+    _check(status, "optimize")
+    return out[0], out[1], out[2], out[3]
 
 
 def metrics(
