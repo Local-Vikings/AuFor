@@ -352,6 +352,23 @@ function weatherStatus(sources) {
   return "LIVE (OPEN-METEO)";
 }
 
+function readingsLabel(summary) {
+  if (!summary || summary.total === 0) return "NONE CONNECTED";
+  if (summary.real === 0) return `SIMULATED (${summary.simulated})`;
+  return summary.simulated === 0 ? `REAL (${summary.real})` : `REAL (${summary.real}) + SIMULATED (${summary.simulated})`;
+}
+
+async function refreshReadingsChip() {
+  const chip = document.getElementById("readings-status");
+  if (!chip) return;
+  try {
+    const response = await fetch("/api/readings/summary");
+    chip.textContent = response.ok ? readingsLabel(await response.json()) : "UNAVAILABLE";
+  } catch (error) {
+    chip.textContent = "UNAVAILABLE";
+  }
+}
+
 function updateStatus(data) {
   const sources = data.meta.data_sources;
   document.getElementById("weather-status").textContent      = weatherStatus(sources);
@@ -379,6 +396,7 @@ async function runForecast(event) {
     drawCharts(data);
     renderRecommendations(data.recommendations);
     updateStatus(data);
+    refreshReadingsChip();
     const hint = document.getElementById("scroll-hint");
     hint.hidden = false;
     document.getElementById("scroll-to-results").onclick = () =>
@@ -408,6 +426,7 @@ function initMap() {
   setTimeout(() => map.invalidateSize(), 100);
   fetchCurrentWeather(42.6977, 23.3219);
   initTimeline();
+  refreshReadingsChip();
   setTimeout(() => { map.invalidateSize(); ensureFieldForView(); }, 150);
 }
 

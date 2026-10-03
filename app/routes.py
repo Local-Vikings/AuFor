@@ -9,6 +9,7 @@ from __future__ import annotations
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
+from app import readings
 from app.advisor import recommend
 from app.clouds import fetch_cloud_field, site_bounds
 from app.config import (
@@ -16,6 +17,7 @@ from app.config import (
     CLOUD_FIELD_MAX_LAT_SPAN_DEG,
     CLOUD_FIELD_MAX_LON_SPAN_DEG,
     DEFAULT_PERFORMANCE_RATIO,
+    READINGS_MAX_HOURS,
 )
 from app.models import (
     DailyForecast,
@@ -24,6 +26,11 @@ from app.models import (
     ForecastResponse,
     HourlyForecast,
     MonthlyForecast,
+    ReadingCreate,
+    ReadingOut,
+    ReadingSource,
+    ReadingsSummary,
+    ReadingType,
     Recommendation,
 )
 from app.pipeline import PipelineResult, build_forecast
@@ -147,3 +154,30 @@ def cloud_field(
         raise HTTPException(status_code=502, detail=str(error)) from error
 
 
+
+
+@router.post("/readings", response_model=ReadingOut, status_code=201)
+def post_reading(reading: ReadingCreate) -> dict:
+    """Store one measurement from a sensor, the camera or a simulation (source says which)."""
+    try:
+        return readings.add_reading(reading)
+    except readings.FutureReading as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except readings.DuplicateReading as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/readings/summary", response_model=ReadingsSummary)
+def readings_summary() -> dict:
+    """How many real and simulated readings are stored."""
+    return readings.summary()
+
+
+@router.get("/readings", response_model=list[ReadingOut])
+def get_readings(
+    type: ReadingType | None = None,
+    source: ReadingSource | None = None,
+    hours: int = Query(default=24, ge=1, le=READINGS_MAX_HOURS),
+) -> list[dict]:
+    """Readings of the last ``hours`` hours, oldest first. Simulated rows keep source "simulated"."""
+    return readings.recent(type, hours, source)

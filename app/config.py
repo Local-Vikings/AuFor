@@ -70,5 +70,8 @@ WEATHER_PROVIDER = os.getenv("WEATHER_PROVIDER", "auto")
 TOMORROW_API_KEY = os.getenv("TOMORROW_API_KEY", "")
 LLM_ENABLED = os.getenv("LLM_ENABLED", "0") == "1"
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/readings.db")
+READING_FUTURE_TOLERANCE_S = 300  # a sensor clock may run a few minutes ahead
+READINGS_MAX_HOURS = 24 * 30
+REAL_READING_SOURCES = ("battery", "panel", "camera")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 SOLAR_LIB_PATH = os.getenv("SOLAR_LIB_PATH", "")

@@ -174,6 +174,25 @@ class Recommendation(BaseModel):
     kwh_effect: float
 
 
+class ReadingOut(BaseModel):
+    """A stored measurement, with the timestamp in UTC."""
+
+    source: ReadingSource
+    type: ReadingType
+    value: float
+    timestamp: datetime
+
+
+class ReadingsSummary(BaseModel):
+    """How much real and simulated data is stored, for the readings status chip."""
+
+    total: int
+    real: int
+    simulated: int
+    last_timestamp: datetime | None
+    by_type: dict[str, int]
+
+
 class ForecastMeta(BaseModel):
     """Describe the data sources and calibration state of a forecast."""
 
