@@ -27,52 +27,38 @@ from app.config import (
     WARN_PEAK_FRACTION,
 )
 from app.models import BatteryConfig, ForecastRequest, PanelConfig, Recommendation
-from app.solar import SolarError, annual_poa, best_orientation
+from app.solar import SolarError, optimize
 
 logger = logging.getLogger(__name__)
 
-OPT_MIN_GAIN = 0.05  # >5% yearly gain, bible 10 rule 4
-OPT_CLOUD_PCT = 0.0  # clear sky year, only for comparing orientations
 
 
-def optimize_rule(
-    lat: float,
-    lon: float,
-    panels: list[PanelConfig],
-    hour: datetime,
-    pr: float = DEFAULT_PERFORMANCE_RATIO,
-) -> list[Recommendation]:
-    best = best_orientation(lat, lon, hour.year, OPT_CLOUD_PCT)
-    if not best:
-        return []
-    tilt, az, best_kwh = best
+MIN_GAIN = 0.05 
+
+
+def optimize_rule(lat, lon, panels, hour, pr=DEFAULT_PERFORMANCE_RATIO):
+
     res = []
     for p in panels:
-        cur = annual_poa(lat, lon, hour.year, p.tilt, p.azimuth, OPT_CLOUD_PCT)
-        if not cur:
+        r = optimize(lat, lon, hour.year, p.tilt, p.azimuth)
+        if r is None:
+            return []  
+        now, tilt, az, best = r
+        if now <= 0 or best / now - 1 <= MIN_GAIN:
             continue
-        gain = best_kwh / cur - 1
-        if gain <= OPT_MIN_GAIN:
-            continue
+        gain = (best / now - 1) * 100
         kwp = p.count * p.watt_peak / 1000
-        res.append(
-            Recommendation(
-                subtopic="optimize",
-                hour=hour,
-                title=f"Turn panels to tilt {tilt:.0f} deg, azimuth {az:.0f} deg",
-                reason=(
-                    f"Panels at tilt {p.tilt:.0f} deg, azimuth {p.azimuth:.0f} deg get "
-                    f"{cur:.0f} kWh/m2 per clear-sky year, the best orientation gets "
-                    f"{best_kwh:.0f} kWh/m2 (+{gain * 100:.0f}%)."
-                ),
-                # clear sky -> upper bound
-                kwh_effect=round(kwp * pr * (best_kwh - cur), 1),
-            )
-        )
+        res.append(Recommendation(
+            subtopic="optimize",
+            hour=hour,
+            title=f"Turn panels to tilt {tilt:.0f} deg, azimuth {az:.0f} deg",
+            reason=f"Panels at tilt {p.tilt:.0f} deg, azimuth {p.azimuth:.0f} deg get {now:.0f} "
+                   f"kWh/m2 in a clear-sky year. With tilt {tilt:.0f} deg and azimuth {az:.0f} "
+                   f"deg they would get {best:.0f} kWh/m2 (+{gain:.0f}%).",
+            kwh_effect=round(kwp * pr * (best - now), 1),  
+        ))
     return res
 
-
-# ---- weather- and battery-driven rules (T17, T18, T19, T21) ----
 
 
 def _day_label(timestamp: pd.Timestamp, now: pd.Timestamp) -> str:

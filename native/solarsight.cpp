@@ -1,5 +1,3 @@
-
-
 #include "solarsight.h"
 
 #include <algorithm>
@@ -17,7 +15,7 @@ static int doy_utc(double t) {
     long long era = (z >= 0 ? z : z - 146096) / 146097;
     long long doe = z - era * 146097;
     long long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    long long d = doe - (365 * yoe + yoe / 4 - yoe / 100);  
+    long long d = doe - (365 * yoe + yoe / 4 - yoe / 100);
     bool leap = (yoe % 4 == 0 && yoe % 100 != 0) || yoe % 400 == 0;
 
     return d >= 306 ? (int)(d - 305) : (int)(d + 60 + (leap ? 1 : 0));
@@ -51,7 +49,7 @@ static double haurwitz(double zen) {
 }
 
 static double kc(double ghi_clear, double cloud) {
-    double n = clamp(cloud, 0.0, 100.0) / 100.0; 
+    double n = clamp(cloud, 0.0, 100.0) / 100.0;
     return ghi_clear * (1 - 0.75 * pow(n, 3.4));
 }
 static void erbs1(double ghi, double zen, int doy, double& dni, double& dhi) {
@@ -86,7 +84,7 @@ extern "C" {
             double hrs = (t[i] - floor(t[i] / 86400.0) * 86400.0) / 3600.0;
             double ha = (15 * (hrs - 12) + lon + eot(doy) / 4) * D2R;
             double z = acos(clamp(cos(dec) * cos(phi) * cos(ha) + sin(dec) * sin(phi), -1.0, 1.0));
-          
+
             double den = sin(z) * cos(phi);
             double ca = fabs(den) < 1e-8 ? 1.0 : (cos(z) * sin(phi) - sin(dec)) / den;
             if (fabs(ca - 1) < 1e-8) ca = 1;
@@ -114,7 +112,7 @@ extern "C" {
         if (tilt < 0 || tilt > 90 || surf_az < 0 || surf_az > 360) return 3;
         double cb = cos(tilt * D2R);
         for (int i = 0; i < n; i++) {
-       
+
             double beam = zen[i] < 90 ? dni[i] * max(cos_aoi(zen[i], azi[i], tilt, surf_az), 0.0) : 0;
             poa[i] = max(beam + dhi[i] * (1 + cb) / 2 + ghi[i] * albedo * (1 - cb) / 2, 0.0);
         }
@@ -189,76 +187,54 @@ extern "C" {
 }
 
 
-struct Sky {
-    vector<double> zen, azi, ghi, dni, dhi;
-};
-
-static bool leap(int y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0; }
-
-static int make_sky(double lat, double lon, int year, double cloud, Sky& sky) {
-    if (year < 1970 || year > 2100 || cloud < 0 || cloud > 100) return 3;
-    double t0 = 0;
-    for (int y = 1970; y < year; y++) t0 += (leap(y) ? 366 : 365) * 86400.0;
-    int n = (leap(year) ? 366 : 365) * 24;
-    vector<double> t(n), cl(n, cloud);
-    for (int i = 0; i < n; i++) t[i] = t0 + i * 3600.0 + 1800.0;
-    sky.zen.resize(n);
-    sky.azi.resize(n);
-    sky.ghi.resize(n);
-    sky.dni.resize(n);
-    sky.dhi.resize(n);
-    int res = ss_sun_position(t.data(), n, lat, lon, sky.zen.data(), sky.azi.data());
-    if (res) return res;
-    return ss_irradiance_from_clouds(sky.zen.data(), cl.data(), t.data(), n, sky.ghi.data(),
-        sky.dni.data(), sky.dhi.data());
+bool is_leap(int y) {
+    return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
 }
 
-static int year_kwh(Sky& sky, double tilt, double surf_az, double albedo, vector<double>& buf,
-    double* kwh_m2) {
-    int n = (int)sky.zen.size();
-    buf.resize(n);
-    int res = ss_poa_irradiance(sky.zen.data(), sky.azi.data(), sky.ghi.data(), sky.dni.data(),
-        sky.dhi.data(), n, tilt, surf_az, albedo, buf.data());
-    if (res) return res;
-    return ss_energy_kwh(buf.data(), n, 1.0, kwh_m2);
+
+double year_sun(vector<double>& zen, vector<double>& azi, vector<double>& ghi,
+    vector<double>& dni, vector<double>& dhi, double tilt, double az, double albedo) {
+    int n = (int)zen.size();
+    vector<double> poa(n);
+    ss_poa_irradiance(zen.data(), azi.data(), ghi.data(), dni.data(), dhi.data(), n, tilt, az,
+        albedo, poa.data());
+    double sum = 0;
+    for (int i = 0; i < n; i++) sum += poa[i];  
+    return sum / 1000;
 }
 
-extern "C" {
 
-    SS_API int ss_annual_poa_kwh_m2(double lat, double lon, int year, double tilt, double surf_az,
-        double albedo, double cloud, double* kwh_m2) {
-        if (!kwh_m2) return 1;
-        Sky sky;
-        int res = make_sky(lat, lon, year, cloud, sky);
-        if (res) return res;
-        vector<double> buf;
-        return year_kwh(sky, tilt, surf_az, albedo, buf, kwh_m2);
-    }
+extern "C" SS_API int ss_optimize(double lat, double lon, int year, double albedo, double tilt,
+    double az, double tilt_step, double az_step, double* out) {
+    if (year < 1970 || year > 2100) return 3;
 
-    SS_API int ss_optimal_orientation(double lat, double lon, int year, double albedo,
-        double cloud, double tilt_step, double az_step,
-        double* best_tilt, double* best_az, double* best_kwh_m2) {
-        if (!best_tilt || !best_az || !best_kwh_m2) return 1;
-        if (tilt_step <= 0 || az_step <= 0) return 3;
-        Sky sky;
-        int res = make_sky(lat, lon, year, cloud, sky);
-        if (res) return res;
-        vector<double> buf;
-        *best_kwh_m2 = -1;
-        for (double tilt = 0; tilt <= 90; tilt += tilt_step) {
-            for (double az = 0; az < 360; az += az_step) {
-                double kwh = 0;
-                res = year_kwh(sky, tilt, az, albedo, buf, &kwh);
-                if (res) return res;
-                if (kwh > *best_kwh_m2) {
-                    *best_kwh_m2 = kwh;
-                    *best_tilt = tilt;
-                    *best_az = az;
-                }
+    
+    double start = 0;
+    for (int y = 1970; y < year; y++) start += (is_leap(y) ? 366 : 365) * 86400.0;
+    int n = (is_leap(year) ? 366 : 365) * 24;
+    vector<double> t(n), clouds(n, 0.0);
+    for (int i = 0; i < n; i++) t[i] = start + i * 3600.0 + 1800.0;
+
+    
+    vector<double> zen(n), azi(n), ghi(n), dni(n), dhi(n);
+    ss_sun_position(t.data(), n, lat, lon, zen.data(), azi.data());
+    ss_irradiance_from_clouds(zen.data(), clouds.data(), t.data(), n, ghi.data(), dni.data(),
+        dhi.data());
+
+    out[0] = year_sun(zen, azi, ghi, dni, dhi, tilt, az, albedo);
+    out[3] = 0;
+    
+    for (double tl = 0; tl <= 90; tl += tilt_step) {
+        for (double a = 0; a < 360; a += az_step) {
+            double kwh = year_sun(zen, azi, ghi, dni, dhi, tl, a, albedo);
+            if (kwh > out[3]) {
+                out[1] = tl;
+                out[2] = a;
+                out[3] = kwh;
             }
         }
-        return 0;
     }
+    return 0;
 }
 
 extern "C" SS_API int ss_metrics(const double* pred, const double* obs, const double* ref, int n,
