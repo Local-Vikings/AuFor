@@ -100,3 +100,36 @@ def test_weather_failure_returns_502(monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.post("/api/forecast", json=BODY)
     assert response.status_code == 502
     assert "Open-Meteo" in response.json()["detail"]
+
+
+def test_hourly_resolution_returns_hourly_and_daily_only() -> None:
+    data = client.post("/api/forecast", json={**BODY, "days": 5}).json()
+    assert len(data["hourly"]) == 120 and len(data["daily"]) == 5 and data["monthly"] == []
+
+
+def test_daily_resolution_skips_hourly_rows() -> None:
+    data = client.post("/api/forecast", json={**BODY, "days": 14, "resolution": "daily"}).json()
+    assert data["hourly"] == [] and len(data["daily"]) == 14 and data["monthly"] == []
+    assert all(row["kwh"] > 0 for row in data["daily"])
+
+
+def test_monthly_resolution_totals_match_daily_sums() -> None:
+    body = {**BODY, "days": 90, "resolution": "monthly"}
+    data = client.post("/api/forecast", json=body).json()
+    assert data["hourly"] == [] and data["daily"] == [] and len(data["monthly"]) >= 3
+    assert sum(month["days"] for month in data["monthly"]) == 90
+    daily = pipeline.build_forecast(request(days=90, resolution="daily"), make_mock_weather(90)).daily
+    assert sum(month["kwh"] for month in data["monthly"]) == pytest.approx(daily["kwh"].sum())
+
+
+def test_year_long_monthly_forecast_is_allowed() -> None:
+    data = client.post("/api/forecast", json={**BODY, "days": 365, "resolution": "monthly"}).json()
+    assert sum(month["days"] for month in data["monthly"]) == 365
+
+
+def test_horizon_limits_return_422() -> None:
+    assert client.post("/api/forecast", json={**BODY, "days": 366, "resolution": "daily"}).status_code == 422
+    hourly_too_long = client.post("/api/forecast", json={**BODY, "days": 40})
+    assert hourly_too_long.status_code == 422
+    assert "hourly resolution supports at most 31 days" in hourly_too_long.text
+    assert client.post("/api/forecast", json={**BODY, "resolution": "weekly"}).status_code == 422

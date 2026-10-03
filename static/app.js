@@ -73,6 +73,7 @@ function payload() {
     },
     load: { daily_kwh: value("daily-load") },
     days: value("days"),
+    resolution: document.getElementById("resolution").value,
   };
 }
 
@@ -238,27 +239,39 @@ function drawCharts(data) {
   const dark = document.body.classList.contains("dark-theme");
   const gridColor = dark ? "#22323c" : "#edf0f1";
   const tickColor = dark ? "#8fa0ac" : "#77818a";
-  const labels = data.hourly.map((r) => new Date(r.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   const opts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 10, color: tickColor } }, y: { grid: { color: gridColor }, ticks: { color: tickColor } } } };
 
+  const hasHourly = data.hourly.length > 0;
+  document.getElementById("hourly-card").hidden = !hasHourly;
+  document.getElementById("soc-card").hidden = !hasHourly;
+  document.querySelector(".chart-grid").classList.toggle("single", !hasHourly);
+
   destroyChart("hourly");
-  charts.hourly = new Chart(document.getElementById("hourly-chart"), {
-    type: "line",
-    data: { labels, datasets: [
-      { label: "Solar", data: data.hourly.map((r) => r.p_ac_w), borderColor: "#1478e8", backgroundColor: "rgba(20,120,232,.1)", fill: true, tension: .35, pointRadius: 0 },
-      { label: "Load",  data: data.hourly.map((r) => r.load_w),  borderColor: "#f2a43a", borderDash: [5,5], tension: .35, pointRadius: 0 },
-    ]}, options: opts,
-  });
+  destroyChart("soc");
+  if (hasHourly) {
+    const multiDay = data.hourly.length > 24;
+    const labels = data.hourly.map((r) => new Date(r.time).toLocaleString([], multiDay ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" } : { hour: "2-digit", minute: "2-digit" }));
+    charts.hourly = new Chart(document.getElementById("hourly-chart"), {
+      type: "line",
+      data: { labels, datasets: [
+        { label: "Solar", data: data.hourly.map((r) => r.p_ac_w), borderColor: "#1478e8", backgroundColor: "rgba(20,120,232,.1)", fill: true, tension: .35, pointRadius: 0 },
+        { label: "Load",  data: data.hourly.map((r) => r.load_w),  borderColor: "#f2a43a", borderDash: [5,5], tension: .35, pointRadius: 0 },
+      ]}, options: opts,
+    });
+    charts.soc = new Chart(document.getElementById("soc-chart"), {
+      type: "line",
+      data: { labels, datasets: [{ data: data.hourly.map((r) => r.soc_kwh), borderColor: dark ? "#6aabff" : "#23343e", backgroundColor: dark ? "rgba(106,171,255,.08)" : "rgba(35,52,62,.07)", fill: true, tension: .25, pointRadius: 0 }] },
+      options: opts,
+    });
+  }
+
+  const monthly = data.monthly.length > 0;
+  const rows = monthly ? data.monthly : data.daily;
+  document.getElementById("daily-title").textContent = monthly ? "Monthly yield" : "Daily yield";
   destroyChart("daily");
   charts.daily = new Chart(document.getElementById("daily-chart"), {
     type: "bar",
-    data: { labels: data.daily.map((r) => r.date), datasets: [{ data: data.daily.map((r) => r.kwh), backgroundColor: "#1478e8", borderRadius: 0 }] },
-    options: opts,
-  });
-  destroyChart("soc");
-  charts.soc = new Chart(document.getElementById("soc-chart"), {
-    type: "line",
-    data: { labels, datasets: [{ data: data.hourly.map((r) => r.soc_kwh), borderColor: dark ? "#6aabff" : "#23343e", backgroundColor: dark ? "rgba(106,171,255,.08)" : "rgba(35,52,62,.07)", fill: true, tension: .25, pointRadius: 0 }] },
+    data: { labels: rows.map((r) => (monthly ? r.month : r.date)), datasets: [{ data: rows.map((r) => r.kwh), backgroundColor: "#1478e8", borderRadius: 0 }] },
     options: opts,
   });
 }
@@ -274,7 +287,7 @@ function renderRecommendations(items) {
 function updateStatus(data) {
   document.getElementById("weather-status").textContent      = data.meta.data_sources.join(" / ").toUpperCase();
   document.getElementById("calibration-status").textContent  = data.meta.calibrated ? "CALIBRATED" : "NOT CALIBRATED";
-  document.getElementById("result-badge").textContent        = "SIMULATED FORECAST";
+  document.getElementById("result-badge").textContent        = data.meta.data_sources.some((x) => x.startsWith("climatology")) ? "FORECAST + CLIMATE AVERAGE" : "SIMULATED FORECAST";
   document.getElementById("last-run").textContent            = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
 }
 
@@ -341,10 +354,27 @@ function initView() {
   }
 }
 
-/* ── Horizon label ───────────────────────────────────────────────── */
-function updateHorizonLabel() {
-  const map_ = { 1: "1 DAY", 3: "3 DAYS", 7: "7 DAYS", 30: "30 DAYS" };
-  document.getElementById("horizon-label").textContent = map_[value("days")] || `${value("days")} DAYS`;
+/* ── Forecast period ─────────────────────────────────────────────── */
+const OPEN_METEO_DAYS = 16;
+const MAX_HOURLY_DAYS = 31;
+
+function syncPeriodControls() {
+  const resolution = document.getElementById("resolution").value;
+  const daysInput = document.getElementById("days");
+  daysInput.max = resolution === "hourly" ? MAX_HOURLY_DAYS : 365;
+  if (Number(daysInput.value) > Number(daysInput.max)) daysInput.value = daysInput.max;
+  const days = Math.max(1, Math.round(value("days")) || 1);
+  document.getElementById("horizon-label").textContent = `${days} ${days === 1 ? "DAY" : "DAYS"} · ${resolution.toUpperCase()}`;
+  const note = document.getElementById("horizon-note");
+  note.hidden = days <= OPEN_METEO_DAYS;
+  note.textContent = `Weather forecasts reach ${OPEN_METEO_DAYS} days. Days after that use the average weather of the same dates last year, so treat them as an estimate, not a forecast.`;
+  document.querySelectorAll(".preset").forEach((b) => b.classList.toggle("is-active", Number(b.dataset.days) === days && b.dataset.resolution === resolution));
+}
+
+function applyPreset(button) {
+  document.getElementById("resolution").value = button.dataset.resolution;
+  document.getElementById("days").value = button.dataset.days;
+  syncPeriodControls();
 }
 
 /* ── Theme ───────────────────────────────────────────────────────── */
@@ -373,7 +403,12 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
 
   const daysEl = document.getElementById("days");
-  if (daysEl) daysEl.addEventListener("change", updateHorizonLabel);
+  if (daysEl) {
+    daysEl.addEventListener("input", syncPeriodControls);
+    document.getElementById("resolution").addEventListener("change", syncPeriodControls);
+    document.querySelectorAll(".preset").forEach((b) => b.addEventListener("click", () => applyPreset(b)));
+    syncPeriodControls();
+  }
 
   // Manual lat/lon input re-syncs map + overlays
   ["lat", "lon"].forEach((id) => {

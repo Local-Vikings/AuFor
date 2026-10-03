@@ -214,6 +214,14 @@ input:focus, select:focus { border-bottom-color: var(--blue); }
 .panel-group-head { display: flex; justify-content: space-between; margin-bottom: 10px; color: var(--blue); font-family: "DM Mono", monospace; font-size: .58rem; text-transform: uppercase; }
 .remove-group { border: 0; color: var(--muted); background: transparent; cursor: pointer; font-size: 1rem; }
 
+/* Period presets */
+.preset-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.preset { padding: 5px 9px; border: 1px solid var(--line); color: var(--muted); background: transparent; cursor: pointer; font-family: "DM Mono", monospace; font-size: .56rem; }
+.preset:hover, .preset.is-active { color: var(--blue); border-color: var(--blue); background: var(--blue-soft); }
+.horizon-note { margin-top: 10px; color: var(--muted); font-size: .62rem; line-height: 1.5; }
+.chart-wide[hidden], .chart-card[hidden] { display: none; }
+.chart-grid.single { grid-template-columns: 1fr; }
+
 /* Scroll-down hint */
 .scroll-down-hint { margin-top: 12px; }
 .scroll-hint-btn {
@@ -323,6 +331,7 @@ body.dark-theme .primary-button { background: #1260cc; }
 body.dark-theme .primary-button:hover { background: #0f50b0; }
 body.dark-theme .landing-button { background: #1260cc; }
 body.dark-theme .secondary-button { color: #6aabff; border-color: #6aabff; }
+body.dark-theme .preset:hover, body.dark-theme .preset.is-active { color: #6aabff; border-color: #6aabff; background: rgba(22,54,96,.4); }
 body.dark-theme .scroll-hint-btn { color: #6aabff; border-color: #6aabff; background: rgba(22,54,96,.4); }
 
 /* ── Responsive ─────────────────────────────────────────────────── */

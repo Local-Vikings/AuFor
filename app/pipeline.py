@@ -30,7 +30,9 @@ class PipelineResult:
 
     hourly: pd.DataFrame  # index: tz-aware hour; columns ghi, g_poa, t_cell, p_ac_w, load_w
     daily: pd.DataFrame  # index: local date string; columns kwh, self_consumption_pct
+    monthly: pd.DataFrame  # index: "YYYY-MM"; columns days, kwh, self_consumption_pct
     engine: str
+    sources: list[str]  # weather sources, e.g. ["open-meteo", "climatology (...)"]
 
 
 def _epoch_seconds(index: pd.DatetimeIndex) -> np.ndarray:
@@ -116,7 +118,14 @@ def build_forecast(
         },
         index=weather.index,
     )
-    return PipelineResult(hourly=hourly, daily=_daily_totals(hourly), engine=solar.ENGINE)
+    daily = _daily_totals(hourly)
+    return PipelineResult(
+        hourly=hourly,
+        daily=daily,
+        monthly=_monthly_totals(daily),
+        engine=solar.ENGINE,
+        sources=list(weather.attrs.get("sources", ["open-meteo"])),
+    )
 
 
 def _daily_totals(hourly: pd.DataFrame) -> pd.DataFrame:
@@ -129,4 +138,18 @@ def _daily_totals(hourly: pd.DataFrame) -> pd.DataFrame:
         )
         share = 100.0 * direct / produced if produced > 0 else 0.0
         rows[day.isoformat()] = {"kwh": produced, "self_consumption_pct": share}
+    return pd.DataFrame.from_dict(rows, orient="index")
+
+
+def _monthly_totals(daily: pd.DataFrame) -> pd.DataFrame:
+    """Sum daily kWh per calendar month; self-consumption is weighted by daily kWh."""
+    rows = {}
+    for month, chunk in daily.groupby(daily.index.str[:7]):
+        kwh = float(chunk["kwh"].sum())
+        weighted = float((chunk["kwh"] * chunk["self_consumption_pct"]).sum())
+        rows[month] = {
+            "days": len(chunk),
+            "kwh": kwh,
+            "self_consumption_pct": weighted / kwh if kwh > 0 else 0.0,
+        }
     return pd.DataFrame.from_dict(rows, orient="index")
