@@ -6,16 +6,25 @@ Recommendations come from app.advisor.
 
 from __future__ import annotations
 
-import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+import secrets
+from datetime import datetime, timezone
+from typing import Literal
 
-from app import readings
+import pandas as pd
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
+
+from app import config as settings
+from app import llm, readings, vision
 from app.advisor import recommend
 from app.clouds import fetch_cloud_field, site_bounds
 from app.config import (
     CLOUD_FIELD_MAX_HOURS,
     CLOUD_FIELD_MAX_LAT_SPAN_DEG,
     CLOUD_FIELD_MAX_LON_SPAN_DEG,
+    CLOUD_MAX_IMAGE_BYTES,
+    CLOUD_ROI_RADIUS_PX,
     DEFAULT_PERFORMANCE_RATIO,
     READINGS_MAX_HOURS,
 )
@@ -25,6 +34,7 @@ from app.models import (
     ForecastRequest,
     ForecastResponse,
     HourlyForecast,
+    CameraResult,
     MonthlyForecast,
     ReadingCreate,
     ReadingOut,
@@ -77,7 +87,7 @@ def forecast(request: ForecastRequest) -> ForecastResponse:
             )
             for month, row in result.monthly.iterrows()
         ]
-    return ForecastResponse(
+    response = ForecastResponse(
         hourly=hourly,
         daily=daily,
         monthly=monthly,
@@ -89,6 +99,14 @@ def forecast(request: ForecastRequest) -> ForecastResponse:
             data_sources=[*result.sources, f"{result.engine} physics"],
             engine=result.engine,
         ),
+    )
+    summary = llm.build_summary(request, response)
+    return response.model_copy(
+        update={
+            "explanation": llm.template_explanation(summary),
+            "explanation_source": "template",
+            "explain_id": llm.remember(summary) if llm.available() else None,
+        }
     )
 
 
@@ -156,7 +174,14 @@ def cloud_field(
 
 
 
-@router.post("/readings", response_model=ReadingOut, status_code=201)
+def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Writes need the shared X-API-Key when READINGS_API_KEY is set; with no key set they stay open (development)."""
+    wanted = settings.READINGS_API_KEY
+    if wanted and not (x_api_key and secrets.compare_digest(x_api_key.encode(), wanted.encode())):
+        raise HTTPException(status_code=401, detail="missing or wrong X-API-Key header")
+
+
+@router.post("/readings", response_model=ReadingOut, status_code=201, dependencies=[Depends(require_api_key)])
 def post_reading(reading: ReadingCreate) -> dict:
     """Store one measurement from a sensor, the camera or a simulation (source says which)."""
     try:
@@ -181,3 +206,56 @@ def get_readings(
 ) -> list[dict]:
     """Readings of the last ``hours`` hours, oldest first. Simulated rows keep source "simulated"."""
     return readings.recent(type, hours, source)
+
+
+class ExplainRequest(BaseModel):
+    """Ask for the AI text of a forecast the server just made."""
+
+    explain_id: str
+
+
+class ExplainResponse(BaseModel):
+    """The explanation text and whether the LLM or the template wrote it."""
+
+    explanation: str
+    explanation_source: Literal["llm", "template"]
+
+
+@router.post("/explain", response_model=ExplainResponse)
+def explain(request: ExplainRequest) -> ExplainResponse:
+    """AI explanation of a recent forecast; falls back to the template text, never fails on the LLM."""
+    summary = llm.recall(request.explain_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="unknown or expired forecast; run the forecast again")
+    result = llm.explain(summary)
+    return ExplainResponse(explanation=result.text, explanation_source=result.source)
+
+
+@router.post("/camera/analyze", response_model=CameraResult, status_code=201, dependencies=[Depends(require_api_key)])
+async def analyze_sky_photo(request: Request, radius: int = Query(default=CLOUD_ROI_RADIUS_PX, ge=20, le=2000)) -> CameraResult:
+    """Measure the cloud fraction of a sky photo (raw image bytes in the body) and store it as a camera reading.
+
+    Only works where the PyTorch model is installed. Otherwise answer 501: run the model on the camera
+    machine instead (scripts/pi_cloud_agent.py) and POST the number to /api/readings.
+    """
+    image = await request.body()
+    if not image:
+        raise HTTPException(status_code=422, detail="send the photo as the raw request body")
+    if len(image) > CLOUD_MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="photo is too large")
+    try:
+        free = await run_in_threadpool(vision.measure_free_percent, image, radius)
+    except vision.ModelUnavailable as error:
+        raise HTTPException(
+            status_code=501,
+            detail=f"{error}. Run the model on the camera machine and POST cloud_fraction to /api/readings.",
+        ) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    fraction = round(min(max(1.0 - free / 100.0, 0.0), 1.0), 3)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    try:
+        readings.add_reading(ReadingCreate(source="camera", type="cloud_fraction", value=fraction, timestamp=now))
+    except readings.DuplicateReading as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return CameraResult(free_percent=round(free, 2), cloud_fraction=fraction, radius_px=radius, timestamp=now)

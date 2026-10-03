@@ -69,7 +69,16 @@ USE_MOCK_WEATHER = os.getenv("USE_MOCK_WEATHER", "0") == "1"
 WEATHER_PROVIDER = os.getenv("WEATHER_PROVIDER", "auto")
 TOMORROW_API_KEY = os.getenv("TOMORROW_API_KEY", "")
 LLM_ENABLED = os.getenv("LLM_ENABLED", "0") == "1"
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
+LLM_TIMEOUT_SECONDS = 10.0
+LLM_MAX_TOKENS = 300
+EXPLAIN_CACHE_SIZE = 64  # forecast summaries kept so the page can ask for the AI text afterwards
+EXPLAIN_CACHE_SECONDS = 3600.0
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/readings.db")
+READINGS_API_KEY = os.getenv("READINGS_API_KEY", "")  # if set, writes need the X-API-Key header
+CLOUD_ROI_RADIUS_PX = 150  # camera model: radius of the circle the cloud fraction is measured in
+CLOUD_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 READING_FUTURE_TOLERANCE_S = 300  # a sensor clock may run a few minutes ahead
 READINGS_MAX_HOURS = 24 * 30
 REAL_READING_SOURCES = ("battery", "panel", "camera")

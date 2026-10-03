@@ -369,6 +369,68 @@ async function refreshReadingsChip() {
   }
 }
 
+/* ── Sky camera: the latest measurement from the Pi ──────────────── */
+const CAMERA_FRESH_MINUTES = 180;
+let cameraTimer = null;
+
+function cameraLabel(row, nowMs = Date.now()) {
+  if (!row) return null;
+  const minutes = Math.max(0, Math.round((nowMs - Date.parse(row.timestamp)) / 60000));
+  if (minutes > CAMERA_FRESH_MINUTES) return null;
+  const age = minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : `${Math.round(minutes / 60)} h ago`;
+  return `${Math.round(row.value * 100)}% cloud · ${age}`;
+}
+
+async function refreshCameraChip() {
+  const chip = document.getElementById("chip-camera");
+  if (!chip) return;
+  try {
+    const response = await fetch("/api/readings?type=cloud_fraction&source=camera&hours=3");
+    const rows = response.ok ? await response.json() : [];
+    const label = cameraLabel(rows[rows.length - 1]);
+    chip.hidden = !label;
+    if (label) document.getElementById("chip-camera-val").textContent = label;
+  } catch (error) {
+    chip.hidden = true;
+  }
+}
+
+let explainToken = 0;
+
+function setExplanation(text, source, note) {
+  document.getElementById("explanation-text").textContent = text;
+  const tag = document.getElementById("explanation-tag");
+  tag.textContent = source === "llm" ? "AI-WRITTEN" : "TEMPLATE";
+  tag.classList.toggle("tag-ai", source === "llm");
+  document.getElementById("explanation-note").textContent = note;
+}
+
+async function showExplanation(data) {
+  const token = ++explainToken;
+  const card = document.querySelector(".explanation-card");
+  card.classList.remove("is-loading");
+  if (!data.explanation) return;
+  const templateNote = "Built from the forecast numbers above by a fixed template.";
+  setExplanation(data.explanation, "template", data.explain_id ? "Asking the AI to put this in its own words…" : templateNote);
+  if (!data.explain_id) return;
+  card.classList.add("is-loading");
+  try {
+    const response = await fetch("/api/explain", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ explain_id: data.explain_id }) });
+    if (token !== explainToken) return;  // a newer forecast replaced this one
+    card.classList.remove("is-loading");
+    if (!response.ok) { setExplanation(data.explanation, "template", `${templateNote} (AI explanation unavailable.)`); return; }
+    const answer = await response.json();
+    if (token !== explainToken) return;
+    setExplanation(answer.explanation, answer.explanation_source, answer.explanation_source === "llm"
+      ? "Written by an AI model from the forecast numbers above. It was told not to invent numbers, and every number in it was checked against the data."
+      : `${templateNote} (The AI could not be used, so this is the template.)`);
+  } catch (error) {
+    if (token !== explainToken) return;
+    card.classList.remove("is-loading");
+    setExplanation(data.explanation, "template", `${templateNote} (AI explanation unavailable.)`);
+  }
+}
+
 function updateStatus(data) {
   const sources = data.meta.data_sources;
   document.getElementById("weather-status").textContent      = weatherStatus(sources);
@@ -397,6 +459,7 @@ async function runForecast(event) {
     renderRecommendations(data.recommendations);
     updateStatus(data);
     refreshReadingsChip();
+    showExplanation(data);
     const hint = document.getElementById("scroll-hint");
     hint.hidden = false;
     document.getElementById("scroll-to-results").onclick = () =>
@@ -427,6 +490,8 @@ function initMap() {
   fetchCurrentWeather(42.6977, 23.3219);
   initTimeline();
   refreshReadingsChip();
+  refreshCameraChip();
+  if (!cameraTimer) cameraTimer = setInterval(() => { refreshCameraChip(); refreshReadingsChip(); }, 30000);
   setTimeout(() => { map.invalidateSize(); ensureFieldForView(); }, 150);
 }
 

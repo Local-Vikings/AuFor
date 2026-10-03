@@ -47,6 +47,8 @@ def test_forecast_stub_has_contract_shape() -> None:
         "monthly",
         "recommendations",
         "explanation",
+        "explanation_source",
+        "explain_id",
         "meta",
     }
 

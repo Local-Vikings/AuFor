@@ -160,6 +160,7 @@ small, .config-number, .result-badge, .decision-note, footer {
   font-family: "DM Mono", monospace; font-size: .6rem;
   backdrop-filter: blur(10px);
 }
+.chip-camera { border-color: var(--blue); }
 .chip-icon { color: var(--muted); font-size: .82rem; }
 
 /* Cloud forecast timeline */
@@ -298,6 +299,14 @@ input:focus, select:focus { border-bottom-color: var(--blue); }
 .badge-store { color: #1b6b3c; background: #dff3e6; }
 body.dark-theme .badge-warning { color: #f2b765; background: rgba(242,164,58,.16); }
 body.dark-theme .badge-store { color: #6fcf97; background: rgba(61,150,93,.18); }
+.explanation { margin-bottom: 64px; }
+.explanation-card { padding: 24px 26px; border: 1px solid var(--line); border-left: 3px solid var(--blue); background: var(--white); }
+.explanation-text { font-size: .98rem; line-height: 1.75; color: var(--ink); }
+.explanation-note { margin-top: 12px; color: var(--muted); font-family: "DM Mono", monospace; font-size: .56rem; letter-spacing: .03em; }
+.explanation-card.is-loading .explanation-text { opacity: .65; }
+.tag-ai { color: #fff; background: var(--blue); padding: 3px 8px; }
+body.dark-theme .explanation-card { background: var(--white); border-color: var(--line); border-left-color: #6aabff; }
+body.dark-theme .tag-ai { background: #1260cc; }
 .recommendation-effect { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 .recommendation-effect small { color: var(--muted); font-size: .5rem; }
 .recommendation-effect strong { color: var(--blue); font-size: .8rem; }

@@ -125,6 +125,10 @@
             <span class="chip-icon">🌡</span>
             <span id="chip-temp-val">—</span>
           </div>
+          <div class="weather-chip chip-camera" id="chip-camera" hidden title="Latest reading from the sky camera">
+            <span class="chip-icon">📷</span>
+            <span id="chip-camera-val">—</span>
+          </div>
         </div>
 
         <!-- Bottom: cloud forecast timeline -->
@@ -255,6 +259,17 @@
           <div id="recommendation-list" class="recommendation-list">
             <div class="empty-state">Run a forecast to turn production numbers into decisions.</div>
           </div>
+        </section>
+
+        <section class="explanation" id="explanation-section">
+          <div class="section-intro">
+            <div><p class="section-label">05 / IN PLAIN WORDS</p><h2>What this means</h2></div>
+            <span id="explanation-tag" class="result-badge">AWAITING FORECAST</span>
+          </div>
+          <article class="explanation-card">
+            <p id="explanation-text" class="explanation-text">Run a forecast to get a plain-language summary of it.</p>
+            <p id="explanation-note" class="explanation-note"></p>
+          </article>
         </section>
       </div>
     </section>

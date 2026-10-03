@@ -183,6 +183,15 @@ class ReadingOut(BaseModel):
     timestamp: datetime
 
 
+class CameraResult(BaseModel):
+    """Result of analysing a sky photo on the server."""
+
+    free_percent: float
+    cloud_fraction: float
+    radius_px: int
+    timestamp: datetime
+
+
 class ReadingsSummary(BaseModel):
     """How much real and simulated data is stored, for the readings status chip."""
 
@@ -210,4 +219,6 @@ class ForecastResponse(BaseModel):
     monthly: list[MonthlyForecast] = Field(default_factory=list)
     recommendations: list[Recommendation]
     explanation: str | None
+    explanation_source: Literal["llm", "template"] | None = None
+    explain_id: str | None = None  # set when an AI explanation can be fetched with POST /api/explain
     meta: ForecastMeta
