@@ -29,6 +29,13 @@ DEFAULT_BATTERY_MAX_POWER_KW = 5.0
 DEFAULT_INITIAL_SOC_KWH = 5.0
 DEFAULT_DAILY_LOAD_KWH = 12.0
 DEFAULT_PERFORMANCE_RATIO = 0.8
+CALIBRATION_WEIGHT_OLD = 0.7  # PR_used = 0.7 * PR_old + 0.3 * PR_new (bible 9.9)
+CALIBRATION_MIN_POINTS = 12  # fewer valid readings than this: keep the PR as it is
+CALIBRATION_MIN_IRRADIANCE_W_M2 = 100.0  # only daytime hours with at least this much plane-of-array sun
+CALIBRATION_PR_MIN = 0.5
+CALIBRATION_PR_MAX = 1.05
+CALIBRATION_CLIP_MARGIN = 0.98  # an hour is "clipped" above this share of the inverter limit
+CALIBRATION_WINDOW_HOURS = 24 * 30
 DEFAULT_ALBEDO = 0.2  # bible 9.2: typical ground reflectance
 WEATHER_INTERVAL_SHIFT_S = 1800.0  # Open-Meteo values average the preceding hour (bible 9.1)
 FORECAST_DT_H = 1.0

@@ -207,6 +207,8 @@ class ForecastMeta(BaseModel):
 
     pr_used: float = Field(ge=0, le=1.05)
     calibrated: bool
+    calibration_points: int = 0  # readings the PR was calibrated from
+    calibration_source: Literal["real", "simulated"] | None = None
     data_sources: list[str]
     engine: Literal["native", "python"] = "python"
 

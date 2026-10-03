@@ -96,7 +96,7 @@ def test_weather_failure_returns_502(monkeypatch: pytest.MonkeyPatch) -> None:
     def broken(*_args) -> None:
         raise WeatherError("Unable to fetch weather from Open-Meteo: timeout")
 
-    monkeypatch.setattr("app.pipeline.fetch_weather", broken)
+    monkeypatch.setattr("app.routes.fetch_weather", broken)
     response = client.post("/api/forecast", json=BODY)
     assert response.status_code == 502
     assert "Open-Meteo" in response.json()["detail"]

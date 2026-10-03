@@ -346,6 +346,12 @@ function renderRecommendations(items) {
   }).join("");
 }
 
+function calibrationLabel(meta) {
+  const pr = Number(meta.pr_used).toFixed(2);
+  if (!meta.calibrated) return `NOT CALIBRATED · PR ${pr}`;
+  return `CALIBRATED · PR ${pr}${meta.calibration_source === "simulated" ? " · SIMULATED DATA" : ""}`;
+}
+
 function weatherStatus(sources) {
   if (sources.includes("mock weather")) return "MOCK (SIMULATED)";
   if (sources.some((x) => x.startsWith("climatology"))) return "LIVE + CLIMATE AVERAGE";
@@ -434,7 +440,7 @@ async function showExplanation(data) {
 function updateStatus(data) {
   const sources = data.meta.data_sources;
   document.getElementById("weather-status").textContent      = weatherStatus(sources);
-  document.getElementById("calibration-status").textContent  = data.meta.calibrated ? "CALIBRATED" : "NOT CALIBRATED";
+  document.getElementById("calibration-status").textContent  = calibrationLabel(data.meta);
   document.getElementById("engine-status").textContent       = data.meta.engine === "native" ? "NATIVE C++" : "PYTHON FALLBACK";
   document.getElementById("result-badge").textContent        = sources.some((x) => x.startsWith("climatology")) ? "FORECAST + CLIMATE AVERAGE" : "SIMULATED FORECAST";
   document.getElementById("last-run").textContent            = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });

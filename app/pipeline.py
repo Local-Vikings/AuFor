@@ -13,6 +13,7 @@ import pandas as pd
 
 from app import battery, solar
 from app.config import (
+    CALIBRATION_CLIP_MARGIN,
     DEFAULT_ALBEDO,
     DEFAULT_PERFORMANCE_RATIO,
     FORECAST_DT_H,
@@ -57,8 +58,8 @@ def _fill_missing_irradiance(
 
 def _group_power(
     group: PanelConfig, weather: pd.DataFrame, zenith: np.ndarray, azimuth: np.ndarray, pr: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return (g_poa, t_cell, p_ac_w) for one panel group with its own inverter."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return (g_poa, t_cell, p_ac_w, p_dc_w) for one panel group with its own inverter."""
     poa = solar.poa_irradiance(
         zenith,
         azimuth,
@@ -71,7 +72,7 @@ def _group_power(
     )
     t_cell = solar.cell_temperature(weather["temp_air"].to_numpy(), poa, group.noct)
     p_dc = solar.dc_power(poa, t_cell, group.count * group.watt_peak, group.gamma)
-    return poa, t_cell, solar.ac_power(p_dc, pr, group.inverter_max_w)
+    return poa, t_cell, solar.ac_power(p_dc, pr, group.inverter_max_w), p_dc
 
 
 def build_forecast(
@@ -105,6 +106,10 @@ def build_forecast(
     results = [_group_power(group, weather, zenith, azimuth, pr) for group in groups]
     weights = np.array([group.count * group.watt_peak for group in groups])
     p_ac = np.sum([result[2] for result in results], axis=0)
+    p_dc = np.sum([result[3] for result in results], axis=0)
+    clipped = np.any(
+        [r[3] * pr >= g.inverter_max_w * CALIBRATION_CLIP_MARGIN for r, g in zip(results, groups)], axis=0
+    )
     g_poa = np.average([result[0] for result in results], axis=0, weights=weights)
     t_cell = np.average([result[1] for result in results], axis=0, weights=weights)
 
@@ -126,6 +131,8 @@ def build_forecast(
             "g_poa": g_poa,
             "t_cell": t_cell,
             "p_ac_w": p_ac,
+            "p_dc_w": p_dc,  # DC power before the performance ratio; calibration compares readings with it
+            "clipped": clipped,  # an inverter is at its limit, so the output says nothing about PR
             "load_w": load_w,
             "soc_kwh": sim.soc_kwh,
             "grid_import_w": sim.import_kw * 1000.0,

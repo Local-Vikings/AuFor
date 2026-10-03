@@ -15,8 +15,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
+from app import calibration, llm, readings, vision
 from app import config as settings
-from app import llm, readings, vision
 from app.advisor import recommend
 from app.clouds import fetch_cloud_field, site_bounds
 from app.config import (
@@ -25,7 +25,6 @@ from app.config import (
     CLOUD_FIELD_MAX_LON_SPAN_DEG,
     CLOUD_MAX_IMAGE_BYTES,
     CLOUD_ROI_RADIUS_PX,
-    DEFAULT_PERFORMANCE_RATIO,
     READINGS_MAX_HOURS,
 )
 from app.models import (
@@ -44,7 +43,7 @@ from app.models import (
     Recommendation,
 )
 from app.pipeline import PipelineResult, build_forecast
-from app.weather import WeatherError
+from app.weather import WeatherError, fetch_weather
 
 router = APIRouter(prefix="/api")
 
@@ -53,9 +52,16 @@ router = APIRouter(prefix="/api")
 def forecast(request: ForecastRequest) -> ForecastResponse:
     """Return hourly and daily solar production for the requested system."""
     try:
-        result = build_forecast(request)
+        weather = fetch_weather(request.lat, request.lon, request.days)
     except WeatherError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+
+    key = calibration.system_key(request)
+    before = calibration.load(key)
+    result = build_forecast(request, weather, pr=before.pr)
+    state = calibration.update(key, result.hourly)  # one smoothing step if new readings arrived
+    if state.pr != before.pr:
+        result = build_forecast(request, weather, pr=state.pr)
 
     hourly: list[HourlyForecast] = []
     daily: list[DailyForecast] = []
@@ -91,11 +97,13 @@ def forecast(request: ForecastRequest) -> ForecastResponse:
         hourly=hourly,
         daily=daily,
         monthly=monthly,
-        recommendations=_recommendations(request, result),
+        recommendations=_recommendations(request, result, state.pr),
         explanation=None,
         meta=ForecastMeta(
-            pr_used=DEFAULT_PERFORMANCE_RATIO,
-            calibrated=False,
+            pr_used=state.pr,
+            calibrated=state.calibrated,
+            calibration_points=state.points,
+            calibration_source=state.source,
             data_sources=[*result.sources, f"{result.engine} physics"],
             engine=result.engine,
         ),
@@ -133,11 +141,11 @@ def _hourly_rows(hourly: pd.DataFrame) -> list[HourlyForecast]:
     ]
 
 
-def _recommendations(request: ForecastRequest, result: PipelineResult) -> list[Recommendation]:
+def _recommendations(request: ForecastRequest, result: PipelineResult, pr: float) -> list[Recommendation]:
     """Rule-based recommendations; mock weather is judged from its first hour, not today's clock."""
     first_hour = result.hourly.index[0]
     now = first_hour if "mock weather" in result.sources else max(pd.Timestamp.now(tz=first_hour.tz), first_hour)
-    return recommend(request, result.hourly, result.daily, now.to_pydatetime())
+    return recommend(request, result.hourly, result.daily, now.to_pydatetime(), pr)
 
 
 def _clamp_pct(value: float) -> float:
@@ -259,3 +267,15 @@ async def analyze_sky_photo(request: Request, radius: int = Query(default=CLOUD_
     except readings.DuplicateReading as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     return CameraResult(free_percent=round(free, 2), cloud_fraction=fraction, radius_px=radius, timestamp=now)
+
+
+@router.get("/calibration")
+def calibration_states() -> list[dict]:
+    """The performance ratio learned for each configured system."""
+    return calibration.all_states()
+
+
+@router.post("/calibration/reset", dependencies=[Depends(require_api_key)])
+def reset_calibration() -> dict:
+    """Forget every learned performance ratio (for repeatable demos). Readings are kept."""
+    return {"removed": calibration.reset()}

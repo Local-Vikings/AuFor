@@ -51,17 +51,25 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+def connect() -> sqlite3.Connection:
+    """A connection to the readings database (the calibration state lives in the same file)."""
+    return _connect()
+
+
 def _epoch(moment: datetime) -> int:
     return int(moment.timestamp())
 
 
-def _row(source: str, kind: str, value: float, ts: int) -> dict:
-    return {
+def _row(source: str, kind: str, value: float, ts: int, row_id: int | None = None) -> dict:
+    row = {
         "source": source,
         "type": kind,
         "value": value,
         "timestamp": datetime.fromtimestamp(ts, timezone.utc),
     }
+    if row_id is not None:
+        row["id"] = row_id
+    return row
 
 
 def add_reading(reading: ReadingCreate, now: datetime | None = None) -> dict:
@@ -91,11 +99,16 @@ def recent(
     hours: int = 24,
     source: str | None = None,
     now: datetime | None = None,
+    include_id: bool = False,
 ) -> list[dict]:
-    """Readings of the last ``hours`` hours, oldest first, optionally filtered."""
+    """Readings of the last ``hours`` hours, oldest first, optionally filtered.
+
+    ``include_id`` adds the database id, which only ever grows: calibration uses it to notice new
+    readings even when they carry older timestamps (for example a buffer flushed after an outage).
+    """
     hours = min(max(hours, 1), READINGS_MAX_HOURS)
     clock = _epoch(now or datetime.now(timezone.utc))
-    query = "SELECT source, type, value, ts FROM readings WHERE ts >= ? AND ts <= ?"
+    query = "SELECT source, type, value, ts, id FROM readings WHERE ts >= ? AND ts <= ?"
     args: list = [clock - hours * 3600, clock + READING_FUTURE_TOLERANCE_S]
     for column, wanted in (("type", kind), ("source", source)):
         if wanted:
@@ -103,7 +116,7 @@ def recent(
             args.append(wanted)
     with closing(_connect()) as connection:
         rows = connection.execute(query + " ORDER BY ts, id", args).fetchall()
-    return [_row(*row) for row in rows]
+    return [_row(*row[:4], row[4] if include_id else None) for row in rows]
 
 
 def summary() -> dict:
