@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from app import solar_python
+from app.config import DEFAULT_ALBEDO, OPT_AZIMUTH_STEP_DEG, OPT_TILT_STEP_DEG
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,21 @@ def _declare(lib: ctypes.CDLL) -> None:
         function = getattr(lib, name)
         function.argtypes = argtypes
         function.restype = _INT
+    _declare_optimizer(lib)
+
+
+def _declare_optimizer(lib: ctypes.CDLL) -> None:
+    """Declare the T20 functions; an older library without them just disables Optimize."""
+    pointer = ctypes.POINTER(_DOUBLE)
+    optional = {
+        "ss_annual_poa_kwh_m2": [_DOUBLE, _DOUBLE, _INT, _DOUBLE, _DOUBLE, _DOUBLE, _DOUBLE, pointer],
+        "ss_optimal_orientation": [_DOUBLE, _DOUBLE, _INT] + [_DOUBLE] * 4 + [pointer] * 3,
+    }
+    for name, argtypes in optional.items():
+        function = getattr(lib, name, None)
+        if function is not None:
+            function.argtypes = argtypes
+            function.restype = _INT
 
 
 _LIB = _load_library()
@@ -191,3 +207,36 @@ def irradiance_from_clouds(
     _check(status, "irradiance_from_clouds")
     return ghi, dni, dhi
 
+
+
+def _optimizer_available() -> bool:
+    return _LIB is not None and hasattr(_LIB, "ss_optimal_orientation")
+
+
+def annual_poa(
+    lat_deg: float, lon_deg: float, year: int, tilt_deg: float, azimuth_deg: float, cloud_pct: float
+) -> float | None:
+    """Clear-sky yearly plane-of-array energy in kWh/m2; None without the native core (T20)."""
+    if not _optimizer_available():
+        return None
+    result = _DOUBLE()
+    status = _LIB.ss_annual_poa_kwh_m2(
+        lat_deg, lon_deg, year, tilt_deg, azimuth_deg, DEFAULT_ALBEDO, cloud_pct, ctypes.byref(result)
+    )
+    _check(status, "annual_poa")
+    return result.value
+
+
+def best_orientation(
+    lat_deg: float, lon_deg: float, year: int, cloud_pct: float
+) -> tuple[float, float, float] | None:
+    """Best (tilt_deg, azimuth_deg, kWh/m2) over a yearly grid search; None without the native core."""
+    if not _optimizer_available():
+        return None
+    tilt, azimuth, kwh = _DOUBLE(), _DOUBLE(), _DOUBLE()
+    status = _LIB.ss_optimal_orientation(
+        lat_deg, lon_deg, year, DEFAULT_ALBEDO, cloud_pct, OPT_TILT_STEP_DEG, OPT_AZIMUTH_STEP_DEG,
+        ctypes.byref(tilt), ctypes.byref(azimuth), ctypes.byref(kwh),
+    )
+    _check(status, "best_orientation")
+    return tilt.value, azimuth.value, kwh.value

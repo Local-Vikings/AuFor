@@ -1,302 +1,265 @@
-// solarsight.cpp: SolarSight C++17 physics core (bible.md 9.0 to 9.7).
-// Pure functions over flat double arrays: no globals, no I/O, no allocation
-// handed to the caller, no exceptions across the C boundary.
-// Does not do battery, advisor, weather fetching or timezone handling.
-
+// solar physics for python (ctypes), formulas from bible 9.1-9.7
 #include "solarsight.h"
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
-namespace {
+using namespace std;
 
-constexpr double kPi = 3.14159265358979323846;
-constexpr double kDegToRad = kPi / 180.0;
-constexpr double kRadToDeg = 180.0 / kPi;
-constexpr double kSecondsPerDay = 86400.0;
-constexpr double kSecondsPerHour = 3600.0;
+static const double PI = 3.14159265358979323846;
+static const double D2R = PI / 180.0;
 
-// Isotropic/NOCT/STC reference values (bible 9.3, 9.4).
-constexpr double kNoctAirC = 20.0;
-constexpr double kNoctIrradiance = 800.0;
-constexpr double kStcIrradiance = 1000.0;
-constexpr double kStcCellC = 25.0;
-
-// Haurwitz clear-sky constants (bible 9.7).
-constexpr double kHaurwitzA = 1098.0;
-constexpr double kHaurwitzB = 0.059;
-
-// Kasten-Czeplak constants (bible 9.7).
-constexpr double kKcCoefficient = 0.75;
-constexpr double kKcExponent = 3.4;
-constexpr double kOktas = 8.0;
-
-// Erbs defaults, matching pvlib.irradiance.erbs / get_extra_radiation(spencer).
-constexpr double kSolarConstant = 1366.1;
-constexpr double kErbsMinCosZenith = 0.065;
-constexpr double kErbsMaxZenithDeg = 87.0;
-
-// Tolerance pvlib uses when snapping cos(azimuth) to +-1.
-constexpr double kAzimuthSnap = 1e-8;
-
-bool bad_args(int n) { return n < 0; }
-
-bool is_finite(double x) { return std::isfinite(x); }
-
-// Days since 1970-01-01 for a proleptic Gregorian date (H. Hinnant's algorithm).
-long long days_from_civil(long long y, unsigned m, unsigned d) {
-    y -= m <= 2;
-    const long long era = (y >= 0 ? y : y - 399) / 400;
-    const unsigned yoe = static_cast<unsigned>(y - era * 400);
-    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    return era * 146097 + static_cast<long long>(doe) - 719468;
+// day of year from utc epoch (civil date algo, howard hinnant)
+static int doy_utc(double t) {
+    long long z = (long long)floor(t / 86400.0) + 719468;
+    long long era = (z >= 0 ? z : z - 146096) / 146097;
+    long long doe = z - era * 146097;
+    long long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    long long d = doe - (365 * yoe + yoe / 4 - yoe / 100);  // days since 1 march
+    bool leap = (yoe % 4 == 0 && yoe % 100 != 0) || yoe % 400 == 0;
+    // march 1 is day 60 (61 in leap years)
+    return d >= 306 ? (int)(d - 305) : (int)(d + 60 + (leap ? 1 : 0));
 }
 
-// Year of the civil date for a day count since 1970-01-01 (inverse of the above).
-long long year_from_days(long long z) {
-    z += 719468;
-    const long long era = (z >= 0 ? z : z - 146096) / 146097;
-    const unsigned doe = static_cast<unsigned>(z - era * 146097);
-    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    const unsigned mp = (5 * doy + 2) / 153;
-    const unsigned m = mp < 10 ? mp + 3 : mp - 9;
-    return static_cast<long long>(yoe) + era * 400 + (m <= 2);
+static double day_ang(int doy) { return 2 * PI / 365.0 * (doy - 1); }
+
+// spencer 1971, same as pvlib
+static double decl(int doy) {
+    double b = day_ang(doy);
+    return 0.006918 - 0.399912 * cos(b) + 0.070257 * sin(b) - 0.006758 * cos(2 * b) +
+        0.000907 * sin(2 * b) - 0.002697 * cos(3 * b) + 0.00148 * sin(3 * b);
 }
 
-// Day of year (1..366) of the UTC date of an epoch timestamp.
-int day_of_year_utc(double t_utc) {
-    const long long days = static_cast<long long>(std::floor(t_utc / kSecondsPerDay));
-    const long long jan1 = days_from_civil(year_from_days(days), 1, 1);
-    return static_cast<int>(days - jan1 + 1);
+static double eot(int doy) {
+    double b = day_ang(doy);
+    return 1440.0 / 2 / PI *
+        (0.0000075 + 0.001868 * cos(b) - 0.032077 * sin(b) - 0.014615 * cos(2 * b) -
+            0.040849 * sin(2 * b));
 }
 
-// Spencer day angle (radians), offset 1 as in pvlib.
-double day_angle(int doy) { return 2.0 * kPi / 365.0 * (doy - 1); }
-
-// Spencer (1971) declination, radians.
-double declination_spencer(int doy) {
-    const double b = day_angle(doy);
-    return 0.006918 - 0.399912 * std::cos(b) + 0.070257 * std::sin(b) -
-           0.006758 * std::cos(2 * b) + 0.000907 * std::sin(2 * b) -
-           0.002697 * std::cos(3 * b) + 0.00148 * std::sin(3 * b);
+static double cos_aoi(double zen, double azi, double tilt, double surf_az) {
+    double z = zen * D2R, b = tilt * D2R;
+    double c = cos(z) * cos(b) + sin(z) * sin(b) * cos((azi - surf_az) * D2R);
+    return clamp(c, -1.0, 1.0);
 }
 
-// Spencer (1971) equation of time, minutes.
-double equation_of_time_spencer(int doy) {
-    const double b = day_angle(doy);
-    return (1440.0 / 2.0 / kPi) *
-           (0.0000075 + 0.001868 * std::cos(b) - 0.032077 * std::sin(b) -
-            0.014615 * std::cos(2 * b) - 0.040849 * std::sin(2 * b));
+static double haurwitz(double zen) {
+    double cz = cos(zen * D2R);
+    return cz > 0 ? 1098.0 * cz * exp(-0.059 / cz) : 0.0;
 }
 
-// Spencer extra-terrestrial normal irradiance, W/m2.
-double extra_radiation(int doy) {
-    const double b = day_angle(doy);
-    return kSolarConstant * (1.00011 + 0.034221 * std::cos(b) + 0.00128 * std::sin(b) +
-                             0.000719 * std::cos(2 * b) + 7.7e-05 * std::sin(2 * b));
+static double kc(double ghi_clear, double cloud) {
+    double n = clamp(cloud, 0.0, 100.0) / 100.0;  // N/8
+    return ghi_clear * (1 - 0.75 * pow(n, 3.4));
 }
 
-double sign(double x) { return (x > 0) - (x < 0); }
-
-// Analytical azimuth (radians, 0 = north), same branches as pvlib.
-double azimuth_analytical(double lat, double ha, double dec, double zen) {
-    const double numer = std::cos(zen) * std::sin(lat) - std::sin(dec);
-    const double denom = std::sin(zen) * std::cos(lat);
-    double cos_azi = std::fabs(denom) <= kAzimuthSnap ? 1.0 : numer / denom;
-    if (std::fabs(cos_azi - 1.0) <= kAzimuthSnap) cos_azi = 1.0;
-    if (std::fabs(cos_azi + 1.0) <= kAzimuthSnap) cos_azi = -1.0;
-    cos_azi = std::clamp(cos_azi, -1.0, 1.0);
-    return sign(ha) * std::acos(cos_azi) + kPi;
-}
-
-double cos_aoi(double zen_deg, double azi_deg, double tilt_deg, double surf_azi_deg) {
-    const double zen = zen_deg * kDegToRad;
-    const double tilt = tilt_deg * kDegToRad;
-    const double v = std::cos(zen) * std::cos(tilt) +
-                     std::sin(zen) * std::sin(tilt) * std::cos((azi_deg - surf_azi_deg) * kDegToRad);
-    return std::clamp(v, -1.0, 1.0);
-}
-
-bool bad_panel(double tilt_deg, double surface_azimuth_deg) {
-    return !is_finite(tilt_deg) || !is_finite(surface_azimuth_deg) || tilt_deg < 0 || tilt_deg > 90 ||
-           surface_azimuth_deg < 0 || surface_azimuth_deg > 360;
-}
-
-double haurwitz(double zenith_deg) {
-    const double cz = std::cos(zenith_deg * kDegToRad);
-    return cz > 0 ? kHaurwitzA * cz * std::exp(-kHaurwitzB / cz) : 0.0;
-}
-
-double kasten_czeplak(double ghi_clear, double cloud_pct) {
-    const double oktas = std::clamp(cloud_pct, 0.0, 100.0) / 100.0 * kOktas;
-    return ghi_clear * (1.0 - kKcCoefficient * std::pow(oktas / kOktas, kKcExponent));
-}
-
-// Erbs (1982) diffuse fraction model; writes dni/dhi for one sample.
-void erbs_one(double ghi, double zenith_deg, int doy, double* dni, double* dhi) {
-    const double cz = std::cos(zenith_deg * kDegToRad);
-    const double i0h = extra_radiation(doy) * std::max(cz, kErbsMinCosZenith);
-    const double kt = std::clamp(ghi / i0h, 0.0, 1.0);
-    double df = 1.0 - 0.09 * kt;
-    if (kt > 0.22 && kt <= 0.8) {
-        df = 0.9511 - 0.1604 * kt + 4.388 * kt * kt - 16.638 * std::pow(kt, 3) +
-             12.336 * std::pow(kt, 4);
-    } else if (kt > 0.8) {
+// erbs like pvlib.irradiance.erbs defaults
+static void erbs1(double ghi, double zen, int doy, double& dni, double& dhi) {
+    double b = day_ang(doy);
+    double e0 = 1366.1 * (1.00011 + 0.034221 * cos(b) + 0.00128 * sin(b) + 0.000719 * cos(2 * b) +
+        7.7e-05 * sin(2 * b));
+    double cz = cos(zen * D2R);
+    double kt = clamp(ghi / (e0 * max(cz, 0.065)), 0.0, 1.0);
+    double df = 1 - 0.09 * kt;
+    if (kt > 0.8)
         df = 0.165;
-    }
-    *dhi = df * ghi;
-    *dni = (ghi - *dhi) / cz;
-    if (zenith_deg > kErbsMaxZenithDeg || ghi < 0 || *dni < 0) {
-        *dni = 0.0;
-        *dhi = ghi;
+    else if (kt > 0.22)
+        df = 0.9511 - 0.1604 * kt + 4.388 * kt * kt - 16.638 * pow(kt, 3) + 12.336 * pow(kt, 4);
+    dhi = df * ghi;
+    dni = (ghi - dhi) / cz;
+    if (zen > 87 || ghi < 0 || dni < 0) {
+        dni = 0;
+        dhi = ghi;
     }
 }
-
-}  // namespace
 
 extern "C" {
 
-int ss_sun_position(const double* t_utc, int n, double lat_deg, double lon_deg,
-                    double* out_zenith_deg, double* out_azimuth_deg) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!t_utc || !out_zenith_deg || !out_azimuth_deg) return SS_ERR_NULL_POINTER;
-    if (!is_finite(lat_deg) || !is_finite(lon_deg) || std::fabs(lat_deg) > 90 ||
-        std::fabs(lon_deg) > 180)
-        return SS_ERR_BAD_PARAMETER;
-    const double lat = lat_deg * kDegToRad;
-    for (int i = 0; i < n; ++i) {
-        const int doy = day_of_year_utc(t_utc[i]);
-        const double dec = declination_spencer(doy);
-        const double hours = (t_utc[i] - std::floor(t_utc[i] / kSecondsPerDay) * kSecondsPerDay) /
-                             kSecondsPerHour;
-        // Hour angle: 15 deg per hour from solar noon, corrected by longitude and EoT (9.1).
-        const double ha = (15.0 * (hours - 12.0) + lon_deg + equation_of_time_spencer(doy) / 4.0) *
-                          kDegToRad;
-        const double cz = std::cos(dec) * std::cos(lat) * std::cos(ha) + std::sin(dec) * std::sin(lat);
-        const double zen = std::acos(std::clamp(cz, -1.0, 1.0));
-        out_zenith_deg[i] = zen * kRadToDeg;
-        out_azimuth_deg[i] = azimuth_analytical(lat, ha, dec, zen) * kRadToDeg;
+    int ss_sun_position(const double* t, int n, double lat, double lon, double* zen, double* azi) {
+        if (!t || !zen || !azi) return 1;
+        if (n < 0) return 2;
+        if (fabs(lat) > 90 || fabs(lon) > 180) return 3;
+        double phi = lat * D2R;
+        for (int i = 0; i < n; i++) {
+            int doy = doy_utc(t[i]);
+            double dec = decl(doy);
+            double hrs = (t[i] - floor(t[i] / 86400.0) * 86400.0) / 3600.0;
+            double ha = (15 * (hrs - 12) + lon + eot(doy) / 4) * D2R;
+            double z = acos(clamp(cos(dec) * cos(phi) * cos(ha) + sin(dec) * sin(phi), -1.0, 1.0));
+            // pvlib analytical azimuth
+            double den = sin(z) * cos(phi);
+            double ca = fabs(den) < 1e-8 ? 1.0 : (cos(z) * sin(phi) - sin(dec)) / den;
+            if (fabs(ca - 1) < 1e-8) ca = 1;
+            if (fabs(ca + 1) < 1e-8) ca = -1;
+            double sgn = (ha > 0) - (ha < 0);
+            zen[i] = z / D2R;
+            azi[i] = (sgn * acos(clamp(ca, -1.0, 1.0)) + PI) / D2R;
+        }
+        return 0;
     }
-    return SS_OK;
-}
 
-int ss_angle_of_incidence(const double* zenith_deg, const double* azimuth_deg, int n,
-                          double tilt_deg, double surface_azimuth_deg, double* out_aoi_deg) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!zenith_deg || !azimuth_deg || !out_aoi_deg) return SS_ERR_NULL_POINTER;
-    if (bad_panel(tilt_deg, surface_azimuth_deg)) return SS_ERR_BAD_PARAMETER;
-    for (int i = 0; i < n; ++i) {
-        out_aoi_deg[i] =
-            std::acos(cos_aoi(zenith_deg[i], azimuth_deg[i], tilt_deg, surface_azimuth_deg)) *
-            kRadToDeg;
+    int ss_angle_of_incidence(const double* zen, const double* azi, int n, double tilt, double surf_az,
+        double* aoi) {
+        if (!zen || !azi || !aoi) return 1;
+        if (n < 0) return 2;
+        for (int i = 0; i < n; i++) aoi[i] = acos(cos_aoi(zen[i], azi[i], tilt, surf_az)) / D2R;
+        return 0;
     }
-    return SS_OK;
-}
 
-int ss_poa_irradiance(const double* zenith_deg, const double* azimuth_deg, const double* ghi,
-                      const double* dni, const double* dhi, int n, double tilt_deg,
-                      double surface_azimuth_deg, double albedo, double* out_poa_w_m2) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!zenith_deg || !azimuth_deg || !ghi || !dni || !dhi || !out_poa_w_m2)
-        return SS_ERR_NULL_POINTER;
-    if (bad_panel(tilt_deg, surface_azimuth_deg) || !is_finite(albedo) || albedo < 0 || albedo > 1)
-        return SS_ERR_BAD_PARAMETER;
-    const double cos_tilt = std::cos(tilt_deg * kDegToRad);
-    for (int i = 0; i < n; ++i) {
-        const double c = cos_aoi(zenith_deg[i], azimuth_deg[i], tilt_deg, surface_azimuth_deg);
-        // No beam from behind the panel or from below the horizon (9.2).
-        const double direct = zenith_deg[i] < 90.0 ? dni[i] * std::max(c, 0.0) : 0.0;
-        const double sky = dhi[i] * (1.0 + cos_tilt) / 2.0;
-        const double ground = ghi[i] * albedo * (1.0 - cos_tilt) / 2.0;
-        out_poa_w_m2[i] = std::max(direct + sky + ground, 0.0);
+    int ss_poa_irradiance(const double* zen, const double* azi, const double* ghi, const double* dni,
+        const double* dhi, int n, double tilt, double surf_az, double albedo,
+        double* poa) {
+        if (!zen || !azi || !ghi || !dni || !dhi || !poa) return 1;
+        if (n < 0) return 2;
+        if (tilt < 0 || tilt > 90 || surf_az < 0 || surf_az > 360) return 3;
+        double cb = cos(tilt * D2R);
+        for (int i = 0; i < n; i++) {
+            // no beam from behind the panel or below horizon
+            double beam = zen[i] < 90 ? dni[i] * max(cos_aoi(zen[i], azi[i], tilt, surf_az), 0.0) : 0;
+            poa[i] = max(beam + dhi[i] * (1 + cb) / 2 + ghi[i] * albedo * (1 - cb) / 2, 0.0);
+        }
+        return 0;
     }
-    return SS_OK;
-}
 
-int ss_cell_temperature(const double* temp_air_c, const double* poa_w_m2, int n, double noct_c,
-                        double* out_t_cell_c) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!temp_air_c || !poa_w_m2 || !out_t_cell_c) return SS_ERR_NULL_POINTER;
-    if (!is_finite(noct_c) || noct_c < kNoctAirC) return SS_ERR_BAD_PARAMETER;
-    for (int i = 0; i < n; ++i) {
-        out_t_cell_c[i] = temp_air_c[i] + (noct_c - kNoctAirC) / kNoctIrradiance * poa_w_m2[i];
+    int ss_cell_temperature(const double* t_air, const double* poa, int n, double noct,
+        double* t_cell) {
+        if (!t_air || !poa || !t_cell) return 1;
+        if (n < 0) return 2;
+        for (int i = 0; i < n; i++) t_cell[i] = t_air[i] + (noct - 20) / 800 * poa[i];
+        return 0;
     }
-    return SS_OK;
-}
 
-int ss_dc_power(const double* poa_w_m2, const double* t_cell_c, int n, double p_stc_w,
-                double gamma_per_c, double* out_p_dc_w) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!poa_w_m2 || !t_cell_c || !out_p_dc_w) return SS_ERR_NULL_POINTER;
-    if (!is_finite(p_stc_w) || !is_finite(gamma_per_c) || p_stc_w <= 0) return SS_ERR_BAD_PARAMETER;
-    for (int i = 0; i < n; ++i) {
-        const double p = p_stc_w * (poa_w_m2[i] / kStcIrradiance) *
-                         (1.0 + gamma_per_c * (t_cell_c[i] - kStcCellC));
-        out_p_dc_w[i] = std::max(p, 0.0);
+    int ss_dc_power(const double* poa, const double* t_cell, int n, double p_stc, double gamma,
+        double* p_dc) {
+        if (!poa || !t_cell || !p_dc) return 1;
+        if (n < 0) return 2;
+        for (int i = 0; i < n; i++)
+            p_dc[i] = max(p_stc * poa[i] / 1000 * (1 + gamma * (t_cell[i] - 25)), 0.0);
+        return 0;
     }
-    return SS_OK;
-}
 
-int ss_ac_power(const double* p_dc_w, int n, double pr, double inverter_max_w,
-                double* out_p_ac_w) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!p_dc_w || !out_p_ac_w) return SS_ERR_NULL_POINTER;
-    if (!is_finite(pr) || !is_finite(inverter_max_w) || pr <= 0 || pr > 1.05 || inverter_max_w <= 0)
-        return SS_ERR_BAD_PARAMETER;
-    for (int i = 0; i < n; ++i) {
-        out_p_ac_w[i] = std::clamp(p_dc_w[i] * pr, 0.0, inverter_max_w);
+    int ss_ac_power(const double* p_dc, int n, double pr, double inv_max, double* p_ac) {
+        if (!p_dc || !p_ac) return 1;
+        if (n < 0) return 2;
+        for (int i = 0; i < n; i++) p_ac[i] = clamp(p_dc[i] * pr, 0.0, inv_max);
+        return 0;
     }
-    return SS_OK;
-}
 
-int ss_energy_kwh(const double* p_ac_w, int n, double dt_h, double* out_energy_kwh) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!p_ac_w || !out_energy_kwh) return SS_ERR_NULL_POINTER;
-    if (!is_finite(dt_h) || dt_h <= 0) return SS_ERR_BAD_PARAMETER;
-    double wh = 0.0;
-    for (int i = 0; i < n; ++i) wh += p_ac_w[i] * dt_h;
-    *out_energy_kwh = wh / 1000.0;
-    return SS_OK;
-}
-
-int ss_clearsky_haurwitz(const double* zenith_deg, int n, double* out_ghi_clear) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!zenith_deg || !out_ghi_clear) return SS_ERR_NULL_POINTER;
-    for (int i = 0; i < n; ++i) out_ghi_clear[i] = haurwitz(zenith_deg[i]);
-    return SS_OK;
-}
-
-int ss_kasten_czeplak(const double* ghi_clear, const double* cloud_cover_pct, int n,
-                      double* out_ghi) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!ghi_clear || !cloud_cover_pct || !out_ghi) return SS_ERR_NULL_POINTER;
-    for (int i = 0; i < n; ++i) out_ghi[i] = kasten_czeplak(ghi_clear[i], cloud_cover_pct[i]);
-    return SS_OK;
-}
-
-int ss_erbs(const double* ghi, const double* zenith_deg, const double* t_utc, int n,
-            double* out_dni, double* out_dhi) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!ghi || !zenith_deg || !t_utc || !out_dni || !out_dhi) return SS_ERR_NULL_POINTER;
-    for (int i = 0; i < n; ++i) {
-        erbs_one(ghi[i], zenith_deg[i], day_of_year_utc(t_utc[i]), &out_dni[i], &out_dhi[i]);
+    int ss_energy_kwh(const double* p_ac, int n, double dt_h, double* kwh) {
+        if (!p_ac || !kwh) return 1;
+        if (n < 0) return 2;
+        double wh = 0;
+        for (int i = 0; i < n; i++) wh += p_ac[i] * dt_h;
+        *kwh = wh / 1000;
+        return 0;
     }
-    return SS_OK;
-}
 
-int ss_irradiance_from_clouds(const double* zenith_deg, const double* cloud_cover_pct,
-                              const double* t_utc, int n, double* out_ghi, double* out_dni,
-                              double* out_dhi) {
-    if (bad_args(n)) return SS_ERR_BAD_LENGTH;
-    if (!zenith_deg || !cloud_cover_pct || !t_utc || !out_ghi || !out_dni || !out_dhi)
-        return SS_ERR_NULL_POINTER;
-    for (int i = 0; i < n; ++i) {
-        out_ghi[i] = kasten_czeplak(haurwitz(zenith_deg[i]), cloud_cover_pct[i]);
-        erbs_one(out_ghi[i], zenith_deg[i], day_of_year_utc(t_utc[i]), &out_dni[i], &out_dhi[i]);
+    int ss_clearsky_haurwitz(const double* zen, int n, double* ghi_clear) {
+        if (!zen || !ghi_clear) return 1;
+        if (n < 0) return 2;
+        for (int i = 0; i < n; i++) ghi_clear[i] = haurwitz(zen[i]);
+        return 0;
     }
-    return SS_OK;
+
+    int ss_kasten_czeplak(const double* ghi_clear, const double* cloud, int n, double* ghi) {
+        if (!ghi_clear || !cloud || !ghi) return 1;
+        if (n < 0) return 2;
+        for (int i = 0; i < n; i++) ghi[i] = kc(ghi_clear[i], cloud[i]);
+        return 0;
+    }
+
+    int ss_erbs(const double* ghi, const double* zen, const double* t, int n, double* dni,
+        double* dhi) {
+        if (!ghi || !zen || !t || !dni || !dhi) return 1;
+        if (n < 0) return 2;
+        for (int i = 0; i < n; i++) erbs1(ghi[i], zen[i], doy_utc(t[i]), dni[i], dhi[i]);
+        return 0;
+    }
+
+    int ss_irradiance_from_clouds(const double* zen, const double* cloud, const double* t, int n,
+        double* ghi, double* dni, double* dhi) {
+        if (!zen || !cloud || !t || !ghi || !dni || !dhi) return 1;
+        if (n < 0) return 2;
+        for (int i = 0; i < n; i++) {
+            ghi[i] = kc(haurwitz(zen[i]), cloud[i]);
+            erbs1(ghi[i], zen[i], doy_utc(t[i]), dni[i], dhi[i]);
+        }
+        return 0;
+    }
 }
 
-}  // extern "C"
+// ---- T20 ----
+
+struct Sky {
+    vector<double> zen, azi, ghi, dni, dhi;
+};
+
+static bool leap(int y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0; }
+
+// every hour of the year, sun at mid-hour, cloud fallback chain from T14
+static int make_sky(double lat, double lon, int year, double cloud, Sky& sky) {
+    if (year < 1970 || year > 2100 || cloud < 0 || cloud > 100) return 3;
+    double t0 = 0;
+    for (int y = 1970; y < year; y++) t0 += (leap(y) ? 366 : 365) * 86400.0;
+    int n = (leap(year) ? 366 : 365) * 24;
+    vector<double> t(n), cl(n, cloud);
+    for (int i = 0; i < n; i++) t[i] = t0 + i * 3600.0 + 1800.0;
+    sky.zen.resize(n);
+    sky.azi.resize(n);
+    sky.ghi.resize(n);
+    sky.dni.resize(n);
+    sky.dhi.resize(n);
+    int res = ss_sun_position(t.data(), n, lat, lon, sky.zen.data(), sky.azi.data());
+    if (res) return res;
+    return ss_irradiance_from_clouds(sky.zen.data(), cl.data(), t.data(), n, sky.ghi.data(),
+        sky.dni.data(), sky.dhi.data());
+}
+
+static int year_kwh(Sky& sky, double tilt, double surf_az, double albedo, vector<double>& buf,
+    double* kwh_m2) {
+    int n = (int)sky.zen.size();
+    buf.resize(n);
+    int res = ss_poa_irradiance(sky.zen.data(), sky.azi.data(), sky.ghi.data(), sky.dni.data(),
+        sky.dhi.data(), n, tilt, surf_az, albedo, buf.data());
+    if (res) return res;
+    return ss_energy_kwh(buf.data(), n, 1.0, kwh_m2);
+}
+
+extern "C" {
+
+    SS_API int ss_annual_poa_kwh_m2(double lat, double lon, int year, double tilt, double surf_az,
+        double albedo, double cloud, double* kwh_m2) {
+        if (!kwh_m2) return 1;
+        Sky sky;
+        int res = make_sky(lat, lon, year, cloud, sky);
+        if (res) return res;
+        vector<double> buf;
+        return year_kwh(sky, tilt, surf_az, albedo, buf, kwh_m2);
+    }
+
+    SS_API int ss_optimal_orientation(double lat, double lon, int year, double albedo,
+        double cloud, double tilt_step, double az_step,
+        double* best_tilt, double* best_az, double* best_kwh_m2) {
+        if (!best_tilt || !best_az || !best_kwh_m2) return 1;
+        if (tilt_step <= 0 || az_step <= 0) return 3;
+        Sky sky;
+        int res = make_sky(lat, lon, year, cloud, sky);
+        if (res) return res;
+        vector<double> buf;
+        *best_kwh_m2 = -1;
+        for (double tilt = 0; tilt <= 90; tilt += tilt_step) {
+            for (double az = 0; az < 360; az += az_step) {
+                double kwh = 0;
+                res = year_kwh(sky, tilt, az, albedo, buf, &kwh);
+                if (res) return res;
+                if (kwh > *best_kwh_m2) {
+                    *best_kwh_m2 = kwh;
+                    *best_tilt = tilt;
+                    *best_az = az;
+                }
+            }
+        }
+        return 0;
+    }
+}
