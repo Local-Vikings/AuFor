@@ -155,18 +155,32 @@
           </fieldset>
 
           <fieldset>
-            <legend>Load &amp; horizon</legend>
+            <legend>Household load</legend>
             <div class="field-grid two">
               <label>Daily load<input id="daily-load" type="number" min="0.1" step="0.1" value="12" /><small>kWh/day</small></label>
-              <label>Horizon
-                <select id="days">
-                  <option value="1">Daily / 1 day</option>
-                  <option value="3" selected>3 days</option>
-                  <option value="7">Weekly / 7 days</option>
-                  <option value="30">Monthly / 30 days</option>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Forecast period</legend>
+            <div class="field-grid two">
+              <label>Length<input id="days" type="number" min="1" max="31" step="1" value="3" /><small>days (1 to 365)</small></label>
+              <label>View
+                <select id="resolution">
+                  <option value="hourly" selected>Hourly</option>
+                  <option value="daily">Daily</option>
+                  <option value="monthly">Monthly</option>
                 </select>
               </label>
             </div>
+            <div class="preset-row" role="group" aria-label="Quick lengths">
+              <button type="button" class="preset" data-days="1" data-resolution="hourly">Day</button>
+              <button type="button" class="preset" data-days="3" data-resolution="hourly">3 days</button>
+              <button type="button" class="preset" data-days="7" data-resolution="daily">Week</button>
+              <button type="button" class="preset" data-days="30" data-resolution="daily">Month</button>
+              <button type="button" class="preset" data-days="365" data-resolution="monthly">Year</button>
+            </div>
+            <p id="horizon-note" class="horizon-note" hidden></p>
           </fieldset>
 
           <button id="forecast-button" class="primary-button" type="submit">
@@ -196,13 +210,13 @@
             <span id="result-badge" class="result-badge">AWAITING FORECAST</span>
           </div>
           <div class="chart-grid">
-            <article class="chart-card chart-wide">
+            <article id="hourly-card" class="chart-card chart-wide">
               <div class="chart-title"><span>Hourly flow</span><small>POWER / W</small></div>
               <canvas id="hourly-chart"></canvas>
               <div class="legend"><span class="legend-solar">Solar production</span><span class="legend-load">Household load</span></div>
             </article>
-            <article class="chart-card"><div class="chart-title"><span>Daily yield</span><small>ENERGY / KWH</small></div><canvas id="daily-chart"></canvas></article>
-            <article class="chart-card"><div class="chart-title"><span>Battery charge</span><small>STATE / KWH</small></div><canvas id="soc-chart"></canvas></article>
+            <article id="daily-card" class="chart-card"><div class="chart-title"><span id="daily-title">Daily yield</span><small>ENERGY / KWH</small></div><canvas id="daily-chart"></canvas></article>
+            <article id="soc-card" class="chart-card"><div class="chart-title"><span>Battery charge</span><small>STATE / KWH</small></div><canvas id="soc-chart"></canvas></article>
           </div>
         </section>
 

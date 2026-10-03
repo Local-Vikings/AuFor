@@ -13,9 +13,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 import pandas as pd
 
-from app.config import USE_MOCK_WEATHER, WEATHER_TIMEOUT_SECONDS
+from app.config import OPEN_METEO_MAX_FORECAST_DAYS, USE_MOCK_WEATHER, WEATHER_TIMEOUT_SECONDS
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
+CLIMATOLOGY_LABEL = "climatology (same dates last year)"
 HOURLY_FIELDS = (
     "temperature_2m",
     "shortwave_radiation",
@@ -83,7 +85,9 @@ def parse_weather(payload: dict[str, Any]) -> pd.DataFrame:
         parsed_times = [datetime.fromisoformat(timestamp) for timestamp in times]
         if any(value.tzinfo is not None for value in parsed_times):
             raise ValueError("provider timestamps must be local wall-clock values")
-        index = pd.DatetimeIndex(parsed_times).tz_localize(timezone)
+        index = pd.DatetimeIndex(parsed_times).tz_localize(
+            timezone, ambiguous="NaT", nonexistent="shift_forward"
+        )
     except (TypeError, ValueError) as error:
         raise WeatherError("Open-Meteo hourly times are invalid") from error
 
@@ -98,18 +102,68 @@ def parse_weather(payload: dict[str, Any]) -> pd.DataFrame:
         },
         index=index,
     )
+    # The repeated hour when clocks go back is ambiguous; drop it instead of guessing.
+    frame = frame[frame.index.notna()]
+    frame = frame[~frame.index.duplicated(keep="first")]
     if frame.isna().any().any():
         raise WeatherError("Open-Meteo hourly fields must not contain null values")
     return frame
 
 
+def _get_json(url: str, params: dict[str, Any]) -> dict[str, Any]:
+    try:
+        with httpx.Client(timeout=WEATHER_TIMEOUT_SECONDS) as client:
+            response = client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+    except (httpx.HTTPError, ValueError) as error:
+        raise WeatherError(f"Unable to fetch weather from Open-Meteo: {error}") from error
+
+
+def _localize(naive: pd.DatetimeIndex, timezone: Any) -> pd.DatetimeIndex:
+    """Attach a timezone, dropping wall-clock hours that do not exist or repeat (DST)."""
+    return naive.tz_localize(timezone, ambiguous="NaT", nonexistent="NaT")
+
+
+def _climatology(lat: float, lon: float, forecast: pd.DataFrame, days: int) -> pd.DataFrame:
+    """Hourly weather for the days after the forecast, from the same dates one year earlier."""
+    timezone = forecast.index.tz
+    first_day = forecast.index[-1].normalize().tz_localize(None) + pd.Timedelta(days=1)
+    start_day = forecast.index[0].normalize().tz_localize(None)
+    last_day = start_day + pd.Timedelta(days=days - 1)
+    last_year = pd.DateOffset(years=1)
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": (first_day - last_year).date().isoformat(),
+        "end_date": (last_day - last_year).date().isoformat(),
+        "hourly": ",".join(HOURLY_FIELDS),
+        "timezone": "auto",
+        "wind_speed_unit": "ms",
+    }
+    archive = parse_weather(_get_json(OPEN_METEO_ARCHIVE_URL, params))
+    shifted = _localize(archive.index.tz_localize(None) + last_year, timezone)
+    archive = archive.set_axis(shifted)
+    archive = archive[archive.index.notna()]
+    archive = archive[~archive.index.duplicated(keep="first")]
+
+    wanted_naive = pd.date_range(first_day, last_day + pd.Timedelta(hours=23), freq="h")
+    wanted = _localize(wanted_naive, timezone)
+    wanted = wanted[wanted.notna()]
+    return archive.reindex(wanted).ffill().bfill()
+
+
 def fetch_weather(lat: float, lon: float, days: int) -> pd.DataFrame:
     """Fetch hourly weather or return the configured offline mock forecast.
+
+    Open-Meteo forecasts reach OPEN_METEO_MAX_FORECAST_DAYS days. Longer horizons
+    append the same dates from the previous year (a climate average, not a
+    forecast). The sources used are listed in ``frame.attrs["sources"]``.
 
     Args:
         lat: Latitude in degrees.
         lon: Longitude in degrees.
-        days: Number of forecast days.
+        days: Number of days to cover.
 
     Returns:
         Timezone-aware hourly weather DataFrame.
@@ -124,18 +178,17 @@ def fetch_weather(lat: float, lon: float, days: int) -> pd.DataFrame:
         "latitude": lat,
         "longitude": lon,
         "hourly": ",".join(HOURLY_FIELDS),
-        "forecast_days": days,
+        "forecast_days": min(days, OPEN_METEO_MAX_FORECAST_DAYS),
         "timezone": "auto",
         "wind_speed_unit": "ms",
     }
-    try:
-        with httpx.Client(timeout=WEATHER_TIMEOUT_SECONDS) as client:
-            response = client.get(OPEN_METEO_URL, params=params)
-            response.raise_for_status()
-            payload = response.json()
-    except (httpx.HTTPError, ValueError) as error:
-        raise WeatherError(f"Unable to fetch weather from Open-Meteo: {error}") from error
-    return parse_weather(payload)
+    frame = parse_weather(_get_json(OPEN_METEO_URL, params))
+    sources = ["open-meteo"]
+    if days > OPEN_METEO_MAX_FORECAST_DAYS:
+        frame = pd.concat([frame, _climatology(lat, lon, frame, days)])
+        sources.append(CLIMATOLOGY_LABEL)
+    frame.attrs["sources"] = sources
+    return frame
 
 
 def make_mock_weather(days: int) -> pd.DataFrame:
@@ -161,4 +214,6 @@ def make_mock_weather(days: int) -> pd.DataFrame:
                     "wind": wind,
                 }
             )
-    return pd.DataFrame(rows, index=pd.DatetimeIndex(timestamps))
+    frame = pd.DataFrame(rows, index=pd.DatetimeIndex(timestamps))
+    frame.attrs["sources"] = ["mock weather"]
+    return frame

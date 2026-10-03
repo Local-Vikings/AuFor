@@ -11,9 +11,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.config import MAX_HORIZON_DAYS, MAX_HOURLY_RESOLUTION_DAYS
+
 ReadingSource = Literal["battery", "panel", "camera", "simulated"]
 ReadingType = Literal["soc_kwh", "power_w", "cloud_fraction"]
 Subtopic = Literal["use", "direct", "optimize", "store"]
+Resolution = Literal["hourly", "daily", "monthly"]
 
 
 class PanelConfig(BaseModel):
@@ -71,13 +74,19 @@ class ForecastRequest(BaseModel):
     panels: list[PanelConfig] | None = None
     battery: BatteryConfig
     load: LoadConfig
-    days: int = Field(default=3, ge=1, le=30)
+    days: int = Field(default=3, ge=1, le=MAX_HORIZON_DAYS)
+    resolution: Resolution = "hourly"
 
     @model_validator(mode="after")
     def require_panel_configuration(self) -> "ForecastRequest":
         """Require either the legacy panel object or one or more panel groups."""
         if self.panel is None and not self.panels:
             raise ValueError("provide panel or panels with at least one panel group")
+        if self.resolution == "hourly" and self.days > MAX_HOURLY_RESOLUTION_DAYS:
+            raise ValueError(
+                f"hourly resolution supports at most {MAX_HOURLY_RESOLUTION_DAYS} days; "
+                "use daily or monthly for longer horizons"
+            )
         return self
 
     @property
@@ -135,6 +144,15 @@ class DailyForecast(BaseModel):
     self_consumption_pct: float = Field(ge=0, le=100)
 
 
+class MonthlyForecast(BaseModel):
+    """Represent one calendar-month production summary."""
+
+    month: str
+    days: int = Field(gt=0)
+    kwh: float = Field(ge=0)
+    self_consumption_pct: float = Field(ge=0, le=100)
+
+
 class Recommendation(BaseModel):
     """Represent a number-derived energy recommendation."""
 
@@ -151,6 +169,7 @@ class ForecastMeta(BaseModel):
     pr_used: float = Field(ge=0, le=1.05)
     calibrated: bool
     data_sources: list[str]
+    engine: Literal["native", "python"] = "python"
 
 
 class ForecastResponse(BaseModel):
@@ -158,6 +177,7 @@ class ForecastResponse(BaseModel):
 
     hourly: list[HourlyForecast]
     daily: list[DailyForecast]
+    monthly: list[MonthlyForecast] = Field(default_factory=list)
     recommendations: list[Recommendation]
     explanation: str | None
     meta: ForecastMeta

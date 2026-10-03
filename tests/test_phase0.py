@@ -44,6 +44,7 @@ def test_forecast_stub_has_contract_shape() -> None:
     assert set(response.json()) == {
         "hourly",
         "daily",
+        "monthly",
         "recommendations",
         "explanation",
         "meta",

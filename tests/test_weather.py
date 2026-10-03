@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import httpx
+import pandas as pd
 import pytest
 
 from app import weather
@@ -123,3 +124,66 @@ def test_mock_weather_is_offline_and_repeats_requested_days(
     assert frame.index[0].date() == date(2026, 10, 3)
     assert frame[frame.index.hour == 13]["ghi"].gt(0).all()
     assert frame[frame.index.hour == 2]["ghi"].eq(0).all()
+
+
+def _hourly_payload(start: str, end: str) -> dict:
+    index = pd.date_range(start, end, freq="h")
+    count = len(index)
+    return {
+        "timezone": "Europe/Sofia",
+        "hourly": {
+            "time": [stamp.strftime("%Y-%m-%dT%H:%M") for stamp in index],
+            "temperature_2m": [10.0] * count,
+            "shortwave_radiation": [100.0] * count,
+            "direct_normal_irradiance": [200.0] * count,
+            "diffuse_radiation": [50.0] * count,
+            "cloud_cover": [20.0] * count,
+            "wind_speed_10m": [2.0] * count,
+        },
+    }
+
+
+def test_long_horizon_appends_last_years_weather(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    def fake_get_json(url: str, params: dict) -> dict:
+        calls.append((url, params))
+        if url == weather.OPEN_METEO_URL:
+            return _hourly_payload("2026-10-03T00:00", "2026-10-18T23:00")  # 16 days
+        return _hourly_payload(params["start_date"], params["end_date"] + "T23:00")
+
+    monkeypatch.setattr(weather, "USE_MOCK_WEATHER", False)
+    monkeypatch.setattr(weather, "_get_json", fake_get_json)
+
+    frame = weather.fetch_weather(42.7, 23.3, 30)
+
+    assert abs(len(frame) - 30 * 24) <= 1  # the repeated DST hour is dropped
+    assert frame.index.is_unique and frame.index.is_monotonic_increasing
+    assert str(frame.index.tz) == "Europe/Sofia"
+    assert frame.attrs["sources"] == ["open-meteo", weather.CLIMATOLOGY_LABEL]
+    forecast_call, archive_call = calls
+    assert forecast_call[1]["forecast_days"] == 16
+    assert archive_call[0] == weather.OPEN_METEO_ARCHIVE_URL
+    assert archive_call[1]["start_date"] == "2025-10-19"
+    assert archive_call[1]["end_date"] == "2025-11-01"
+
+
+def test_short_horizon_uses_only_the_forecast_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def fake_get_json(url: str, params: dict) -> dict:
+        seen.append(url)
+        return _hourly_payload("2026-10-03T00:00", "2026-10-05T23:00")
+
+    monkeypatch.setattr(weather, "USE_MOCK_WEATHER", False)
+    monkeypatch.setattr(weather, "_get_json", fake_get_json)
+    frame = weather.fetch_weather(42.7, 23.3, 3)
+    assert seen == [weather.OPEN_METEO_URL]
+    assert frame.attrs["sources"] == ["open-meteo"]
+
+
+def test_parse_weather_survives_the_daylight_saving_change() -> None:
+    payload = _hourly_payload("2025-10-25T22:00", "2025-10-26T06:00")
+    frame = weather.parse_weather(payload)
+    assert frame.index.is_unique and frame.index.is_monotonic_increasing
+    assert len(frame) >= 8
