@@ -29,6 +29,9 @@ DEFAULT_BATTERY_MAX_POWER_KW = 5.0
 DEFAULT_INITIAL_SOC_KWH = 5.0
 DEFAULT_DAILY_LOAD_KWH = 12.0
 DEFAULT_PERFORMANCE_RATIO = 0.8
+DEFAULT_ALBEDO = 0.2  # bible 9.2: typical ground reflectance
+WEATHER_INTERVAL_SHIFT_S = 1800.0  # Open-Meteo values average the preceding hour (bible 9.1)
+FORECAST_DT_H = 1.0
 WEATHER_TIMEOUT_SECONDS = 10.0
 CARTO_API_KEY = os.getenv("CARTO_API_KEY", "")
 
@@ -38,3 +41,4 @@ TOMORROW_API_KEY = os.getenv("TOMORROW_API_KEY", "")
 LLM_ENABLED = os.getenv("LLM_ENABLED", "0") == "1"
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/readings.db")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+SOLAR_LIB_PATH = os.getenv("SOLAR_LIB_PATH", "")

@@ -1,63 +1,64 @@
 """HTTP routes for the SolarSight API.
 
-Routes validate and serialize requests only. Weather, physics, battery, and
-recommendation logic will be connected here after their domain tasks are complete.
+Routes validate and serialize requests only; the calculation lives in app.pipeline.
+Battery simulation and recommendations are not connected yet (T16, T17, T22).
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from fastapi import APIRouter, HTTPException
 
-from fastapi import APIRouter
-
-from app.config import DEFAULT_PERFORMANCE_RATIO
+from app.config import DEFAULT_PERFORMANCE_RATIO, USE_MOCK_WEATHER
 from app.models import (
     DailyForecast,
     ForecastMeta,
     ForecastRequest,
     ForecastResponse,
     HourlyForecast,
-    Recommendation,
 )
+from app.pipeline import build_forecast
+from app.weather import WeatherError
 
 router = APIRouter(prefix="/api")
 
 
 @router.post("/forecast", response_model=ForecastResponse)
-def forecast_stub(request: ForecastRequest) -> ForecastResponse:
-    """Return a deterministic simulated payload until the forecast pipeline exists."""
-    timestamp = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+def forecast(request: ForecastRequest) -> ForecastResponse:
+    """Return hourly and daily solar production for the requested system."""
+    try:
+        result = build_forecast(request)
+    except WeatherError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+    soc = request.battery.initial_soc_kwh  # placeholder until battery.py (T16) lands
     hourly = [
         HourlyForecast(
-            time=timestamp,
-            ghi=0,
-            g_poa=0,
-            t_cell=10,
-            p_ac_w=0,
-            load_w=request.load.daily_kwh * 1000 / 24,
-            soc_kwh=request.battery.initial_soc_kwh,
-            grid_import_w=request.load.daily_kwh * 1000 / 24,
-            grid_export_w=0,
+            time=timestamp.to_pydatetime(),
+            ghi=row.ghi,
+            g_poa=row.g_poa,
+            t_cell=row.t_cell,
+            p_ac_w=row.p_ac_w,
+            load_w=row.load_w,
+            soc_kwh=soc,
+            grid_import_w=max(row.load_w - row.p_ac_w, 0.0),
+            grid_export_w=max(row.p_ac_w - row.load_w, 0.0),
         )
+        for timestamp, row in result.hourly.iterrows()
     ]
-    daily = [DailyForecast(date=timestamp.date().isoformat(), kwh=0, self_consumption_pct=0)]
-    recommendations = [
-        Recommendation(
-            subtopic="use",
-            hour=timestamp,
-            title="Forecast stub",
-            reason="Simulated placeholder data; connect the weather and physics pipeline next.",
-            kwh_effect=0,
-        )
+    daily = [
+        DailyForecast(date=day, kwh=row.kwh, self_consumption_pct=row.self_consumption_pct)
+        for day, row in result.daily.iterrows()
     ]
+    weather_label = "mock weather" if USE_MOCK_WEATHER else "open-meteo"
     return ForecastResponse(
         hourly=hourly,
         daily=daily,
-        recommendations=recommendations,
+        recommendations=[],
         explanation=None,
         meta=ForecastMeta(
             pr_used=DEFAULT_PERFORMANCE_RATIO,
             calibrated=False,
-            data_sources=["simulated stub"],
+            data_sources=[weather_label, f"{result.engine} physics"],
+            engine=result.engine,
         ),
     )

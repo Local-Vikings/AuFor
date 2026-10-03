@@ -292,7 +292,7 @@ async function runForecast(event) {
   try {
     const res  = await fetch("/api/forecast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail?.[0]?.msg || "Forecast request failed");
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg || "Forecast request failed");
     drawCharts(data);
     renderRecommendations(data.recommendations);
     updateStatus(data);

@@ -151,6 +151,7 @@ class ForecastMeta(BaseModel):
     pr_used: float = Field(ge=0, le=1.05)
     calibrated: bool
     data_sources: list[str]
+    engine: Literal["native", "python"] = "python"
 
 
 class ForecastResponse(BaseModel):
