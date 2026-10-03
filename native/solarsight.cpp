@@ -1,4 +1,5 @@
-// solar physics for python (ctypes), formulas from bible 9.1-9.7
+
+
 #include "solarsight.h"
 
 #include <algorithm>
@@ -10,21 +11,21 @@ using namespace std;
 static const double PI = 3.14159265358979323846;
 static const double D2R = PI / 180.0;
 
-// day of year from utc epoch (civil date algo, howard hinnant)
+
 static int doy_utc(double t) {
     long long z = (long long)floor(t / 86400.0) + 719468;
     long long era = (z >= 0 ? z : z - 146096) / 146097;
     long long doe = z - era * 146097;
     long long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    long long d = doe - (365 * yoe + yoe / 4 - yoe / 100);  // days since 1 march
+    long long d = doe - (365 * yoe + yoe / 4 - yoe / 100);  
     bool leap = (yoe % 4 == 0 && yoe % 100 != 0) || yoe % 400 == 0;
-    // march 1 is day 60 (61 in leap years)
+
     return d >= 306 ? (int)(d - 305) : (int)(d + 60 + (leap ? 1 : 0));
 }
 
 static double day_ang(int doy) { return 2 * PI / 365.0 * (doy - 1); }
 
-// spencer 1971, same as pvlib
+
 static double decl(int doy) {
     double b = day_ang(doy);
     return 0.006918 - 0.399912 * cos(b) + 0.070257 * sin(b) - 0.006758 * cos(2 * b) +
@@ -50,11 +51,9 @@ static double haurwitz(double zen) {
 }
 
 static double kc(double ghi_clear, double cloud) {
-    double n = clamp(cloud, 0.0, 100.0) / 100.0;  // N/8
+    double n = clamp(cloud, 0.0, 100.0) / 100.0; 
     return ghi_clear * (1 - 0.75 * pow(n, 3.4));
 }
-
-// erbs like pvlib.irradiance.erbs defaults
 static void erbs1(double ghi, double zen, int doy, double& dni, double& dhi) {
     double b = day_ang(doy);
     double e0 = 1366.1 * (1.00011 + 0.034221 * cos(b) + 0.00128 * sin(b) + 0.000719 * cos(2 * b) +
@@ -87,7 +86,7 @@ extern "C" {
             double hrs = (t[i] - floor(t[i] / 86400.0) * 86400.0) / 3600.0;
             double ha = (15 * (hrs - 12) + lon + eot(doy) / 4) * D2R;
             double z = acos(clamp(cos(dec) * cos(phi) * cos(ha) + sin(dec) * sin(phi), -1.0, 1.0));
-            // pvlib analytical azimuth
+          
             double den = sin(z) * cos(phi);
             double ca = fabs(den) < 1e-8 ? 1.0 : (cos(z) * sin(phi) - sin(dec)) / den;
             if (fabs(ca - 1) < 1e-8) ca = 1;
@@ -115,7 +114,7 @@ extern "C" {
         if (tilt < 0 || tilt > 90 || surf_az < 0 || surf_az > 360) return 3;
         double cb = cos(tilt * D2R);
         for (int i = 0; i < n; i++) {
-            // no beam from behind the panel or below horizon
+       
             double beam = zen[i] < 90 ? dni[i] * max(cos_aoi(zen[i], azi[i], tilt, surf_az), 0.0) : 0;
             poa[i] = max(beam + dhi[i] * (1 + cb) / 2 + ghi[i] * albedo * (1 - cb) / 2, 0.0);
         }
@@ -189,7 +188,6 @@ extern "C" {
     }
 }
 
-// ---- T20 ----
 
 struct Sky {
     vector<double> zen, azi, ghi, dni, dhi;
@@ -197,7 +195,6 @@ struct Sky {
 
 static bool leap(int y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0; }
 
-// every hour of the year, sun at mid-hour, cloud fallback chain from T14
 static int make_sky(double lat, double lon, int year, double cloud, Sky& sky) {
     if (year < 1970 || year > 2100 || cloud < 0 || cloud > 100) return 3;
     double t0 = 0;
@@ -262,4 +259,27 @@ extern "C" {
         }
         return 0;
     }
+}
+
+extern "C" SS_API int ss_metrics(const double* pred, const double* obs, const double* ref, int n,
+    double* rmse, double* mae, double* skill) {
+    double sum_sq = 0;
+    double sum_abs = 0;
+    double sum_ref = 0;
+    for (int i = 0; i < n; i++) {
+        double err = pred[i] - obs[i];
+        double err_ref = ref[i] - obs[i];
+        sum_sq += err * err;
+        sum_abs += fabs(err);
+        sum_ref += err_ref * err_ref;
+    }
+    *rmse = sqrt(sum_sq / n);
+    *mae = sum_abs / n;
+    if (sum_ref == 0) {
+        *skill = 0;
+    }
+    else {
+        *skill = 1 - *rmse / sqrt(sum_ref / n);
+    }
+    return 0;
 }

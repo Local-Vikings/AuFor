@@ -1,10 +1,4 @@
-"""Solar physics API: ctypes wrapper over native/libsolarsight with a Python fallback.
 
-The C++ core (bible 9.0) is loaded once. If the library is missing or fails to
-load, every function uses app/solar_python.py and ENGINE is "python", so the app
-never breaks because a compile failed. Pass engine="python" or engine="native"
-to force one side (used by the parity tests).
-"""
 
 from __future__ import annotations
 
@@ -64,6 +58,8 @@ def _declare(lib: ctypes.CDLL) -> None:
         function.argtypes = argtypes
         function.restype = _INT
     _declare_optimizer(lib)
+    if hasattr(lib, "ss_metrics"):  
+        lib.ss_metrics.argtypes = [_ARRAY, _ARRAY, _ARRAY, _INT] + [ctypes.POINTER(_DOUBLE)] * 3
 
 
 def _declare_optimizer(lib: ctypes.CDLL) -> None:
@@ -240,3 +236,13 @@ def best_orientation(
     )
     _check(status, "best_orientation")
     return tilt.value, azimuth.value, kwh.value
+
+
+def metrics(pred, obs, ref):
+    
+    rmse = _DOUBLE()
+    mae = _DOUBLE()
+    skill = _DOUBLE()
+    _LIB.ss_metrics(_f64(pred), _f64(obs), _f64(ref), len(pred),
+                    ctypes.byref(rmse), ctypes.byref(mae), ctypes.byref(skill))
+    return rmse.value, mae.value, skill.value
