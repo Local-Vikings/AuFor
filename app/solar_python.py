@@ -99,3 +99,13 @@ def irradiance_from_clouds(
     ghi = clear * (1 - KASTEN_COEFFICIENT * (oktas / 8.0) ** KASTEN_EXPONENT)
     split = pvlib.irradiance.erbs(ghi, zenith_deg, _index(t_utc))
     return ghi, np.asarray(split["dni"]), np.asarray(split["dhi"])
+
+
+def metrics(pred: np.ndarray, obs: np.ndarray, ref: np.ndarray) -> tuple[float, float, float]:
+    """RMSE, MAE and skill = 1 - RMSE / RMSE_ref (0 when the reference is perfect), as ss_metrics computes them."""
+    error = pred - obs
+    rmse = float(np.sqrt(np.mean(error**2)))
+    mae = float(np.mean(np.abs(error)))
+    ref_mse = float(np.mean((ref - obs) ** 2))
+    skill = 0.0 if ref_mse == 0 else 1.0 - rmse / float(np.sqrt(ref_mse))
+    return rmse, mae, skill

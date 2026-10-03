@@ -87,7 +87,7 @@ def smooth(pr_old: float, pr_new: float) -> float:
     return CALIBRATION_WEIGHT_OLD * pr_old + (1.0 - CALIBRATION_WEIGHT_OLD) * pr_new
 
 
-def _hour_label(timestamp: int) -> int:
+def hour_label(timestamp: int) -> int:
     """The forecast hour a reading belongs to. Weather values average the PRECEDING hour, so a reading
     at 11:30 belongs to the row labelled 12:00 (and one exactly at 12:00 also to 12:00)."""
     return -(-timestamp // 3600) * 3600
@@ -104,7 +104,7 @@ def _estimate_from(hourly: pd.DataFrame, rows: list[dict], source: str) -> Estim
     last_id = 0
     for row in rows:
         ts = int(row["timestamp"].timestamp())
-        label = _hour_label(ts)
+        label = hour_label(ts)
         if label in usable:
             buckets.setdefault(label, []).append(row["value"])
             last_id = max(last_id, row["id"])

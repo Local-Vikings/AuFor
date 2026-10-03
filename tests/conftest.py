@@ -11,3 +11,11 @@ def temporary_database(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 def offline_weather(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tests never touch the network: force the bundled mock weather."""
     monkeypatch.setattr("app.weather.USE_MOCK_WEATHER", True)
+
+
+@pytest.fixture(autouse=True)
+def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Whatever is in the developer's .env (LLM key, API key) must not change what tests do."""
+    monkeypatch.setattr("app.config.LLM_ENABLED", False)
+    monkeypatch.setattr("app.config.LLM_API_KEY", "")
+    monkeypatch.setattr("app.config.READINGS_API_KEY", "")

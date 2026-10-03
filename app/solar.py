@@ -1,4 +1,10 @@
+"""Solar physics API: ctypes wrapper over native/libsolarsight with a Python fallback.
 
+The C++ core (bible 9.0) is loaded once. If the library is missing or fails to
+load, every function uses app/solar_python.py and ENGINE is "python", so the app
+never breaks because a compile failed. Pass engine="python" or engine="native"
+to force one side (used by the parity tests).
+"""
 
 from __future__ import annotations
 
@@ -238,11 +244,24 @@ def best_orientation(
     return tilt.value, azimuth.value, kwh.value
 
 
-def metrics(pred, obs, ref):
-    
-    rmse = _DOUBLE()
-    mae = _DOUBLE()
-    skill = _DOUBLE()
-    _LIB.ss_metrics(_f64(pred), _f64(obs), _f64(ref), len(pred),
-                    ctypes.byref(rmse), ctypes.byref(mae), ctypes.byref(skill))
+def metrics(
+    pred: np.ndarray, obs: np.ndarray, ref: np.ndarray, engine: str | None = None
+) -> tuple[float, float, float]:
+    """RMSE, MAE and skill = 1 - RMSE / RMSE_ref of ``pred`` against ``obs`` (bible 8).
+
+    ``ref`` is the baseline forecast (persistence); skill is 0 when the baseline is perfect.
+    Uses the C++ core when it has ss_metrics, otherwise the Python version.
+
+    Raises:
+        ValueError: If the arrays differ in length or are empty.
+    """
+    p, o, r = _f64(pred), _f64(obs), _f64(ref)
+    if not len(p) == len(o) == len(r) or len(p) == 0:
+        raise ValueError("pred, obs and ref must be non-empty and the same length")
+    if _LIB is None or not hasattr(_LIB, "ss_metrics") or engine == "python":
+        if engine == "native":
+            raise RuntimeError("native engine requested but libsolarsight has no ss_metrics")
+        return solar_python.metrics(p, o, r)
+    rmse, mae, skill = _DOUBLE(), _DOUBLE(), _DOUBLE()
+    _check(_LIB.ss_metrics(p, o, r, len(p), ctypes.byref(rmse), ctypes.byref(mae), ctypes.byref(skill)), "metrics")
     return rmse.value, mae.value, skill.value
