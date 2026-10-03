@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 700" font-family="Manrope, 'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5b6b76"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1478e8"/>
+    </marker>
+    <style>
+      .title { font-size: 13px; font-weight: 800; fill: #17212b; letter-spacing: .04em; }
+      .label { font-size: 12px; fill: #17212b; font-weight: 700; }
+      .sub { font-size: 10.5px; fill: #5b6b76; }
+      .mono { font-family: 'DM Mono', 'Courier New', monospace; font-size: 9.5px; fill: #1478e8; letter-spacing: .04em; }
+      .box { fill: #ffffff; stroke: #cfd8dc; stroke-width: 1.2; }
+      .core { fill: #eaf3ff; stroke: #1478e8; stroke-width: 1.4; }
+      .opt { fill: #fff6e5; stroke: #f2a43a; stroke-width: 1.2; stroke-dasharray: 5 4; }
+      .zone { fill: #f7f9f8; stroke: #dfe5e8; stroke-width: 1.2; }
+      .line { stroke: #5b6b76; stroke-width: 1.5; fill: none; }
+      .flow { stroke: #1478e8; stroke-width: 2; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1180" height="700" fill="#ffffff"/>
+  <text x="40" y="38" class="title" style="font-size:18px">SolarSight: how the data flows</text>
+  <text x="40" y="58" class="sub">Weather in, physics and a battery model in the middle, a decision and an explanation out. Dashed orange boxes are optional plug-ins.</text>
+
+  <!-- INPUTS -->
+  <rect x="30" y="85" width="270" height="585" rx="10" class="zone"/>
+  <text x="48" y="110" class="title">INPUTS</text>
+
+  <rect x="48" y="125" width="234" height="74" rx="8" class="box"/>
+  <text x="62" y="148" class="label">Open-Meteo (no key)</text>
+  <text x="62" y="165" class="sub">forecast 16 days, cloud and wind field,</text>
+  <text x="62" y="180" class="sub">historical weather (ERA5)</text>
+  <text x="62" y="193" class="sub" style="font-size:9.5px">after day 16: same dates last year</text>
+
+  <rect x="48" y="212" width="234" height="62" rx="8" class="box"/>
+  <text x="62" y="235" class="label">Browser: you</text>
+  <text x="62" y="252" class="sub">pick the site on the map, panel groups,</text>
+  <text x="62" y="266" class="sub">battery, daily load, period (1-365 days)</text>
+
+  <rect x="48" y="287" width="234" height="86" rx="8" class="opt"/>
+  <text x="62" y="310" class="label">Raspberry Pi sky camera</text>
+  <text x="62" y="327" class="sub">PyTorch U-Net measures cloud cover</text>
+  <text x="62" y="341" class="sub">scripts/pi_cloud_agent.py posts</text>
+  <text x="62" y="355" class="sub">cloud_fraction, buffers when offline</text>
+
+  <rect x="48" y="386" width="234" height="74" rx="8" class="opt"/>
+  <text x="62" y="409" class="label">Sensor node / meter</text>
+  <text x="62" y="426" class="sub">solar cell + INA219 on an ESP32 or Pi</text>
+  <text x="62" y="440" class="sub">posts power_w; scripts/fake_readings.py</text>
+  <text x="62" y="454" class="sub">posts SIMULATED ones for the demo</text>
+
+  <rect x="48" y="473" width="234" height="62" rx="8" class="opt"/>
+  <text x="62" y="496" class="label">Anthropic API (optional)</text>
+  <text x="62" y="513" class="sub">rewrites the explanation; every number</text>
+  <text x="62" y="527" class="sub">is checked against the data</text>
+
+  <rect x="48" y="548" width="234" height="62" rx="8" class="box"/>
+  <text x="62" y="571" class="label">PVGIS (validation only)</text>
+  <text x="62" y="588" class="sub">scripts/validate.py compares yearly</text>
+  <text x="62" y="602" class="sub">energy with the EU reference</text>
+
+  <text x="48" y="640" class="mono">API KEY ON WRITES: X-API-KEY</text>
+  <text x="48" y="655" class="sub" style="font-size:9.5px">Pi and sensor post over HTTP to /api/readings</text>
+
+  <!-- SERVER -->
+  <rect x="330" y="85" width="520" height="585" rx="10" class="zone"/>
+  <text x="348" y="110" class="title">SOLARSIGHT SERVER (FastAPI, Docker)</text>
+
+  <rect x="348" y="125" width="484" height="50" rx="8" class="box"/>
+  <text x="362" y="147" class="label">routes.py</text>
+  <text x="362" y="164" class="sub">POST /api/forecast  |  /api/readings  |  /api/cloud-field  |  /api/explain  |  /api/camera/analyze</text>
+
+  <rect x="348" y="192" width="230" height="52" rx="8" class="box"/>
+  <text x="362" y="214" class="label">weather.py</text>
+  <text x="362" y="231" class="sub">hourly weather, timezone safe, mock mode</text>
+
+  <rect x="602" y="192" width="230" height="52" rx="8" class="box"/>
+  <text x="616" y="214" class="label">clouds.py</text>
+  <text x="616" y="231" class="sub">cloud + wind grid for the map overlay</text>
+
+  <rect x="348" y="262" width="484" height="132" rx="8" class="core"/>
+  <text x="362" y="284" class="label">pipeline.py: weather to hourly power to daily kWh</text>
+  <text x="362" y="303" class="sub">sun position at the middle of the hour  &gt;  plane-of-array irradiance  &gt;  cell temperature</text>
+  <text x="362" y="319" class="sub">&gt;  DC power  &gt;  AC power with inverter clipping, per panel group, times the performance ratio (PR)</text>
+  <rect x="362" y="332" width="206" height="48" rx="6" fill="#ffffff" stroke="#1478e8" stroke-width="1"/>
+  <text x="372" y="351" class="label" style="font-size:11px">native/ C++ core (ctypes)</text>
+  <text x="372" y="367" class="sub" style="font-size:9.5px">pvlib/numpy fallback if not built</text>
+  <rect x="582" y="332" width="236" height="48" rx="6" fill="#ffffff" stroke="#1478e8" stroke-width="1"/>
+  <text x="592" y="351" class="label" style="font-size:11px">clear-sky comparison</text>
+  <text x="592" y="367" class="sub" style="font-size:9.5px">energy lost to clouds, per hour and day</text>
+
+  <rect x="348" y="412" width="230" height="52" rx="8" class="box"/>
+  <text x="362" y="434" class="label">battery.py</text>
+  <text x="362" y="451" class="sub">hourly charge, discharge, grid</text>
+
+  <rect x="602" y="412" width="230" height="52" rx="8" class="box"/>
+  <text x="616" y="434" class="label">advisor.py</text>
+  <text x="616" y="451" class="sub">Use, Direct, Store, Optimize, Warning</text>
+
+  <rect x="348" y="482" width="230" height="64" rx="8" class="box"/>
+  <text x="362" y="504" class="label">readings.py (SQLite)</text>
+  <text x="362" y="521" class="sub">power, SoC, camera cloud fraction;</text>
+  <text x="362" y="535" class="sub">simulated rows stay labelled</text>
+
+  <rect x="602" y="482" width="230" height="64" rx="8" class="box"/>
+  <text x="616" y="504" class="label">calibration.py</text>
+  <text x="616" y="521" class="sub">PR from readings, 0.7 old + 0.3 new,</text>
+  <text x="616" y="535" class="sub">per system, one step per new batch</text>
+
+  <rect x="348" y="564" width="484" height="86" rx="8" class="box"/>
+  <text x="362" y="586" class="label">llm.py: explanation that never fails</text>
+  <text x="362" y="603" class="sub">builds a small summary of the forecast, writes a template text from its numbers, and</text>
+  <text x="362" y="617" class="sub">asks the model for a nicer one only if a key is set. An answer with a number that is not</text>
+  <text x="362" y="631" class="sub">in the data is thrown away and the template is shown. Works with no key and no internet.</text>
+
+  <!-- OUTPUT -->
+  <rect x="880" y="85" width="270" height="585" rx="10" class="zone"/>
+  <text x="898" y="110" class="title">WHAT YOU SEE</text>
+
+  <rect x="898" y="125" width="234" height="96" rx="8" class="box"/>
+  <text x="912" y="148" class="label">Map (Leaflet)</text>
+  <text x="912" y="165" class="sub">cloud forecast layer that follows the</text>
+  <text x="912" y="179" class="sub">view, wind arrows and flow, a time</text>
+  <text x="912" y="193" class="sub">slider with play, sun position,</text>
+  <text x="912" y="207" class="sub">sky camera chip</text>
+
+  <rect x="898" y="234" width="234" height="86" rx="8" class="box"/>
+  <text x="912" y="257" class="label">Charts (Chart.js)</text>
+  <text x="912" y="274" class="sub">hourly power and load, battery,</text>
+  <text x="912" y="288" class="sub">cloud cover and sunshine, yield vs</text>
+  <text x="912" y="302" class="sub">clear sky; hover moves the map time</text>
+
+  <rect x="898" y="333" width="234" height="74" rx="8" class="box"/>
+  <text x="912" y="356" class="label">Decisions</text>
+  <text x="912" y="373" class="sub">cards with the hour, the reason and</text>
+  <text x="912" y="387" class="sub">the kWh effect of each action</text>
+
+  <rect x="898" y="420" width="234" height="74" rx="8" class="box"/>
+  <text x="912" y="443" class="label">In plain words</text>
+  <text x="912" y="460" class="sub">the explanation, labelled TEMPLATE</text>
+  <text x="912" y="474" class="sub">or AI-WRITTEN</text>
+
+  <rect x="898" y="507" width="234" height="74" rx="8" class="box"/>
+  <text x="912" y="530" class="label">Live readings</text>
+  <text x="912" y="547" class="sub">measured or SIMULATED points over the</text>
+  <text x="912" y="561" class="sub">forecast curve, refreshed every 10 s</text>
+
+  <rect x="898" y="594" width="234" height="62" rx="8" class="box"/>
+  <text x="912" y="617" class="label">Status chips</text>
+  <text x="912" y="634" class="sub">weather source, PR and whether it is</text>
+  <text x="912" y="648" class="sub">calibrated, engine, readings</text>
+
+  <!-- ARROWS -->
+  <!-- weather: Open-Meteo -> weather.py and clouds.py -->
+  <path d="M282 162 H308 V218 H348" class="flow" marker-end="url(#arrow-blue)"/>
+  <!-- browser -> routes.py -->
+  <path d="M282 243 H326 V150 H348" class="line" marker-end="url(#arrow)"/>
+  <!-- Pi camera and sensor -> readings.py (through /api/readings) -->
+  <path d="M282 330 H314 V514 H348" class="line" marker-end="url(#arrow)"/>
+  <path d="M282 423 H314" class="line"/>
+  <text x="326" y="470" class="mono" style="font-size:8.5px" transform="rotate(-90 326 470)">POST /API/READINGS</text>
+  <!-- llm.py -> Anthropic (optional) -->
+  <path d="M348 607 H298 V504 H282" class="line" style="stroke-dasharray:5 4" marker-end="url(#arrow)"/>
+  <!-- inside the server -->
+  <path d="M463 175 V192" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M463 244 V262" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M463 394 V412" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M717 394 V412" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M463 464 V482" class="line" marker-end="url(#arrow)"/>
+  <path d="M578 514 H602" class="line" marker-end="url(#arrow)"/>
+  <!-- calibration -> pipeline: the learned PR -->
+  <path d="M832 514 H841 V328 H832" class="line" style="stroke-dasharray:5 4" marker-end="url(#arrow)"/>
+  <text x="862" y="425" class="mono" style="font-size:8.5px" transform="rotate(-90 862 425)">LEARNED PR</text>
+  <!-- server -> what you see -->
+  <path d="M832 150 H898" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M832 277 H898" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M832 438 H864 V370 H898" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M832 607 H864 V457 H898" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M832 534 H850 V544 H898" class="line" marker-end="url(#arrow)"/>
+</svg>

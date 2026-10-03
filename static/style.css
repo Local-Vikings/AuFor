@@ -14,6 +14,7 @@
 
 /* ── Reset ──────────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }  /* an element's own display rule must never beat the hidden attribute */
 h1, h2, p { margin: 0; }
 button, input, select { font: inherit; }
 body {
@@ -299,6 +300,10 @@ input:focus, select:focus { border-bottom-color: var(--blue); }
 .badge-store { color: #1b6b3c; background: #dff3e6; }
 body.dark-theme .badge-warning { color: #f2b765; background: rgba(242,164,58,.16); }
 body.dark-theme .badge-store { color: #6fcf97; background: rgba(61,150,93,.18); }
+.tag-sim { color: #8a4b00; background: #fff1d6; padding: 3px 8px; }
+body.dark-theme .tag-sim { color: #f2b765; background: rgba(242,164,58,.16); }
+#readings-card canvas[hidden] { display: none; }
+#readings-card code { font-size: .95em; }
 .explanation { margin-bottom: 64px; }
 .explanation-card { padding: 24px 26px; border: 1px solid var(--line); border-left: 3px solid var(--blue); background: var(--white); }
 .explanation-text { font-size: .98rem; line-height: 1.75; color: var(--ink); }

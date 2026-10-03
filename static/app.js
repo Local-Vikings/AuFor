@@ -401,6 +401,66 @@ async function refreshCameraChip() {
   }
 }
 
+/* ── Live readings vs forecast ───────────────────────────────────── */
+const READINGS_POLL_MS = 10000;
+const READINGS_HOURS = 48;
+let readingsChart = null, readingsTimer = null, lastForecast = null;
+
+function readingsTag(rows) {
+  const real = rows.filter((r) => r.source !== "simulated").length;
+  const simulated = rows.length - real;
+  const noun = (n) => `${n} reading${n === 1 ? "" : "s"}`;
+  if (!rows.length) return { text: "NO READINGS", simulated: false };
+  if (!real) return { text: `SIMULATED · ${noun(simulated)}`, simulated: true };
+  return { text: simulated ? `REAL · ${real} + SIMULATED · ${simulated}` : `REAL · ${noun(real)}`, simulated: simulated > 0 };
+}
+
+function readingsDatasets(rows, forecast) {
+  const point = (r) => ({ x: Date.parse(r.timestamp), y: r.value });
+  const datasets = [];
+  if (forecast && forecast.hourly && forecast.hourly.length) {
+    datasets.push({ label: "Forecast power", type: "line", data: forecast.hourly.map((h) => ({ x: Date.parse(h.time), y: h.p_ac_w })), borderColor: "#1478e8", backgroundColor: "rgba(20,120,232,.08)", fill: true, pointRadius: 0, tension: .35, borderWidth: 2, order: 2 });
+  }
+  const simulated = rows.filter((r) => r.source === "simulated").map(point);
+  const real = rows.filter((r) => r.source !== "simulated").map(point);
+  if (simulated.length) datasets.push({ label: "Simulated readings", type: "scatter", data: simulated, backgroundColor: "rgba(242,164,58,.75)", borderColor: "#f2a43a", pointRadius: 3, order: 1 });
+  if (real.length) datasets.push({ label: "Measured readings", type: "scatter", data: real, backgroundColor: "#1a9e5c", borderColor: "#1a9e5c", pointRadius: 3.5, order: 0 });
+  return datasets;
+}
+
+async function refreshReadingsChart() {
+  const canvas = document.getElementById("readings-chart");
+  if (!canvas) return;
+  let rows = [];
+  try {
+    const response = await fetch(`/api/readings?type=power_w&hours=${READINGS_HOURS}`);
+    if (response.ok) rows = await response.json();
+  } catch (error) { return; }  // keep what is on screen; the next poll tries again
+  const tag = readingsTag(rows);
+  const badge = document.getElementById("readings-tag");
+  badge.textContent = tag.text;
+  badge.classList.toggle("tag-sim", tag.simulated);
+  document.getElementById("readings-empty").hidden = rows.length > 0;
+  canvas.hidden = rows.length === 0;
+  if (readingsChart) { readingsChart.destroy(); readingsChart = null; }
+  if (!rows.length) return;
+  const dark = document.body.classList.contains("dark-theme");
+  const grid = dark ? "#22323c" : "#edf0f1", tick = dark ? "#8fa0ac" : "#77818a";
+  const clock = (value) => new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  readingsChart = new Chart(canvas, {
+    type: "scatter",
+    data: { datasets: readingsDatasets(rows, lastForecast) },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: "nearest", intersect: false },
+      plugins: { legend: { display: true, labels: { color: tick, boxWidth: 8, boxHeight: 8, font: { size: 10 } } }, tooltip: { callbacks: { title: (items) => clock(items[0].parsed.x) } } },
+      scales: { x: { type: "linear", grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8, callback: clock } }, y: { grid: { color: grid }, ticks: { color: tick }, title: { display: true, text: "W", color: tick } } } },
+  });
+}
+
+function startReadingsPolling() {
+  refreshReadingsChart();
+  if (!readingsTimer) readingsTimer = setInterval(refreshReadingsChart, READINGS_POLL_MS);
+}
+
 let explainToken = 0;
 
 function setExplanation(text, source, note) {
@@ -461,10 +521,12 @@ async function runForecast(event) {
     const res  = await fetch("/api/forecast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
     const data = await res.json();
     if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg || "Forecast request failed");
+    lastForecast = data;
     drawCharts(data);
     renderRecommendations(data.recommendations);
     updateStatus(data);
     refreshReadingsChip();
+    refreshReadingsChart();
     showExplanation(data);
     const hint = document.getElementById("scroll-hint");
     hint.hidden = false;
@@ -497,6 +559,7 @@ function initMap() {
   initTimeline();
   refreshReadingsChip();
   refreshCameraChip();
+  startReadingsPolling();
   if (!cameraTimer) cameraTimer = setInterval(() => { refreshCameraChip(); refreshReadingsChip(); }, 30000);
   setTimeout(() => { map.invalidateSize(); ensureFieldForView(); }, 150);
 }

@@ -246,6 +246,11 @@
               <div class="chart-title"><span id="cloud-title">Cloud forecast and sunshine</span><small id="cloud-unit">CLOUD % / SUN W/M²</small></div>
               <canvas id="cloud-chart"></canvas>
             </article>
+            <article id="readings-card" class="chart-card chart-wide">
+              <div class="chart-title"><span>Live readings vs forecast</span><span id="readings-tag" class="result-badge">NO READINGS</span></div>
+              <canvas id="readings-chart"></canvas>
+              <p id="readings-empty" class="explanation-note">No power readings yet. A sensor or the simulator posts them to <code>/api/readings</code>: run <code>python scripts/fake_readings.py</code> for SIMULATED ones. This chart refreshes by itself.</p>
+            </article>
             <article id="daily-card" class="chart-card"><div class="chart-title"><span id="daily-title">Daily yield</span><small>ENERGY / KWH</small></div><canvas id="daily-chart"></canvas></article>
             <article id="soc-card" class="chart-card"><div class="chart-title"><span>Battery charge</span><small>STATE / KWH</small></div><canvas id="soc-chart"></canvas></article>
           </div>

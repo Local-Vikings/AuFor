@@ -8,3 +8,7 @@ data/*.db
 native/*.so
 native/*.dll
 native/*.dylib
+docs/
+test_images/
+outputs/
+predictions.jsonl
