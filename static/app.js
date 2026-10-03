@@ -212,10 +212,6 @@ function applyWeatherOverlays(cur, lat, lon) {
 
   drawWindArrow(document.getElementById("wind-canvas"), windDir);
 
-  // Cloud tint: up to 30% opacity overlay on map
-  const overlay = document.getElementById("cloud-overlay");
-  if (overlay) overlay.style.background = cloudField ? "transparent" : `rgba(170,195,220,${(cloud / 100) * 0.30})`;
-
   // Single wind arrow at the site, only until the wind field layer is available
   if (map && !cloudField) placeWindMarker(lat ?? getLat(), lon ?? getLon(), windSpeed, windDir);
 }
@@ -337,7 +333,7 @@ function renderRecommendations(items) {
   }
   list.innerHTML = items.map((item) => {
     const yearly = item.subtopic === "optimize";
-    const when = yearly ? "PER YEAR" : new Date(item.hour).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const when = yearly ? "PER YEAR" : item.hour.slice(11, 16);  // the site's wall-clock time, as in the title (not the browser's timezone)
     const sign = item.kwh_effect > 0 ? "+" : "";
     const effect = `<div class="recommendation-effect"><small>KWH EFFECT${yearly ? " (CLEAR-SKY MAX)" : ""}</small><strong>${sign}${item.kwh_effect} kWh</strong></div>`;
     return `<article class="recommendation"><div class="recommendation-meta"><span class="badge badge-${item.subtopic}">${item.subtopic}</span><span>${when}</span></div><h3>${item.title}</h3><p>${item.reason}</p>${effect}</article>`;
@@ -458,7 +454,7 @@ async function refreshReadingsChart() {
 
 function startReadingsPolling() {
   refreshReadingsChart();
-  if (!readingsTimer) readingsTimer = setInterval(refreshReadingsChart, READINGS_POLL_MS);
+  if (!readingsTimer) readingsTimer = setInterval(() => { if (!document.hidden) refreshReadingsChart(); }, READINGS_POLL_MS);
 }
 
 let explainToken = 0;
@@ -564,7 +560,10 @@ function initMap() {
   refreshReadingsChip();
   refreshCameraChip();
   startReadingsPolling();
-  if (!cameraTimer) cameraTimer = setInterval(() => { refreshCameraChip(); refreshReadingsChip(); }, 30000);
+  if (!cameraTimer) cameraTimer = setInterval(() => { if (!document.hidden) { refreshCameraChip(); refreshReadingsChip(); } }, 30000);
+  document.addEventListener("visibilitychange", () => {  // back on the tab: catch up at once instead of waiting
+    if (!document.hidden) { refreshReadingsChart(); refreshCameraChip(); refreshReadingsChip(); }
+  });
   setTimeout(() => { map.invalidateSize(); ensureFieldForView(); }, 150);
 }
 
@@ -638,6 +637,7 @@ const WIND_CELL = 20;      // px between nodes of the screen wind grid
 const ARROW_SPACING = 54;  // px between arrows
 const ARROW_OPACITY = 0.6;
 let windCanvas = null, flowCanvas = null, windGrid = null, particles = [], flowFrame = null, windRefresh = null;
+let mapOnScreen = true;  // the flow animation pauses while the map is scrolled out of view
 
 function fieldPosition(lat, lon) {
   const { lats, lons } = cloudField;
@@ -756,7 +756,7 @@ function newParticle(width, height, fresh) {
 
 function stepFlow() {
   flowFrame = null;
-  if (!flowOn || !flowCanvas || !windGrid) return;
+  if (!flowOn || !flowCanvas || !windGrid || !mapOnScreen) return;  // restarted when the map scrolls back in
   const context = flowCanvas.getContext("2d");
   const { x: width, y: height } = map.getSize();
   context.globalCompositeOperation = "destination-out";
@@ -843,8 +843,6 @@ function nearestFieldIndex(epoch, toleranceSeconds) {
   return bestGap <= toleranceSeconds ? best : -1;
 }
 
-function currentEpoch() { return cloudField ? cloudField.times[timeIndex] : null; }
-
 function showHoverPill(text, ms = 2200) {
   const pill = document.getElementById("hover-pill");
   pill.textContent = text;
@@ -867,6 +865,7 @@ function initTimeline() {
   const chip = (id, getter, setter) => document.getElementById(id).addEventListener("click", (event) => {
     setter(!getter());
     event.currentTarget.classList.toggle("is-active", getter());
+    event.currentTarget.setAttribute("aria-pressed", String(getter()));
   });
   chip("toggle-clouds", () => cloudsOn, (v) => { cloudsOn = v; if (cloudImage) cloudImage.setOpacity(v ? 1 : 0); });
   chip("toggle-wind", () => windOn, (v) => { windOn = v; drawWindArrows(); });
@@ -876,6 +875,10 @@ function initTimeline() {
     else { if (flowFrame) cancelAnimationFrame(flowFrame); flowFrame = null; if (flowCanvas) flowCanvas.getContext("2d").clearRect(0, 0, flowCanvas.width, flowCanvas.height); }
   });
   map.on("movestart zoomstart", hideWind);
+  new IntersectionObserver(([entry]) => {
+    mapOnScreen = entry.isIntersecting;
+    if (mapOnScreen && flowOn && windGrid && !flowFrame) flowFrame = requestAnimationFrame(stepFlow);
+  }).observe(document.getElementById("map"));
   map.on("moveend zoomend resize", () => { scheduleWindRefresh(); scheduleFieldCheck(); });
 }
 
@@ -895,8 +898,6 @@ function fieldCoversView() {
     && Math.max(b.getWest(), -180) >= fieldView.west && Math.min(b.getEast(), 180) <= fieldView.east;
   return inside && map.getZoom() - fieldView.zoom < 1;  // zoomed in a level or more: the grid is too coarse, refetch
 }
-
-function scheduleCloudField() { scheduleFieldCheck(); }
 
 function scheduleFieldCheck() {
   clearTimeout(fieldTimer);
@@ -937,8 +938,6 @@ async function loadCloudField(view) {
   document.getElementById("tl-start").textContent = fieldTimeLabel(cloudField.times[0]);
   document.getElementById("tl-end").textContent = fieldTimeLabel(cloudField.times[cloudField.times.length - 1]);
   timeline.hidden = false;
-  const overlay = document.getElementById("cloud-overlay");
-  if (overlay) overlay.style.background = "transparent";
   if (windMarker) { windMarker.remove(); windMarker = null; }
   setTimeIndex(Math.max(0, nearestFieldIndex(keepEpoch, Infinity)));
   if (String(cloudField.source).startsWith("open-meteo (cached")) showHoverPill("Open-Meteo is unreachable: showing the last cloud forecast saved on the server", 9000);

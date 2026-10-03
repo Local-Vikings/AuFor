@@ -44,6 +44,25 @@ DEFAULT_REQUEST = {
 }
 
 
+def local_api_key() -> str | None:
+    """The key for writes: AUFOR_API_KEY, else READINGS_API_KEY from the environment or the repository's .env
+    or data/.env (the server writes a generated key there at start-up, so scripts on the same machine just work)."""
+    for name in ("AUFOR_API_KEY", "READINGS_API_KEY"):
+        if os.environ.get(name, "").strip():
+            return os.environ[name].strip()
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for env_file in (os.path.join(root, ".env"), os.path.join(root, "data", ".env")):  # data/.env: the Docker setup
+        try:
+            with open(env_file) as handle:
+                for line in handle:
+                    name, _, value = line.strip().partition("=")
+                    if name == "READINGS_API_KEY" and value.strip() and value.strip().lower() != "off":
+                        return value.strip()
+        except OSError:
+            continue
+    return None
+
+
 class AuthError(RuntimeError):
     """The server refused the API key."""
 
@@ -129,7 +148,7 @@ def run_once(args: argparse.Namespace, request: dict, rng: random.Random) -> dic
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Post SIMULATED power readings for the calibration demo.")
     parser.add_argument("--server", default=os.environ.get("AUFOR_SERVER", "http://127.0.0.1:8000"))
-    parser.add_argument("--api-key", default=os.environ.get("AUFOR_API_KEY"))
+    parser.add_argument("--api-key", default=local_api_key(), help="default: AUFOR_API_KEY or READINGS_API_KEY from .env")
     parser.add_argument("--config", help="JSON file with a forecast request (default: the page's default system)")
     parser.add_argument("--bias", type=float, default=0.92, help="the fake system produces this share of what PR 0.80 predicts")
     parser.add_argument("--noise", type=float, default=0.08, help="standard deviation of the relative noise")

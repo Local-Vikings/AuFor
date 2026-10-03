@@ -10,7 +10,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
 
 from infer import load_model, predict_prob, circle_mask
-from model import build_model
 
 
 OUT_DIR = os.path.join(HERE, "outputs")

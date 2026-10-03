@@ -57,7 +57,7 @@ Open <http://127.0.0.1:8000> (intro) and <http://127.0.0.1:8000/calculator> (the
   (the "Physics engine" chip says `PYTHON FALLBACK`). Only the *Optimize* rule needs the C++ library.
 * **No internet?** Run with `USE_MOCK_WEATHER=1`. The bundled clear-day weather is used and labelled `MOCK (SIMULATED)`.
   The page itself loads Leaflet, Chart.js and fonts from CDNs, so the browser needs internet for those.
-* **Tests:** `pytest -q` (offline, about 250 tests, 15 seconds).
+* **Tests:** `pip install -r requirements-dev.txt`, then `pytest -q` (offline, about 270 tests, 15 seconds).
 
 ### A five-minute demo
 
@@ -109,12 +109,11 @@ The two pictures at the top use real weather. The others were taken with the bun
 | `USE_MOCK_WEATHER` | `1` = use the bundled clear-day weather, no network |
 | `CARTO_API_KEY` | optional key for CARTO map tiles (the public tiles are used without it) |
 | `LLM_ENABLED`, `LLM_API_KEY`, `LLM_MODEL` | switch on the AI explanation (Anthropic API). Off by default; the template is used without them |
-| `READINGS_API_KEY` | if set, writes to `/api/readings` need the header `X-API-Key` (use it whenever the server is reachable from outside) |
+| `READINGS_API_KEY` | writes (`/api/readings`, `/api/camera/analyze`, `/api/calibration/reset`) need it in the header `X-API-Key`. Left empty, the server **generates one at start-up and saves it to `.env`** (Docker: `data/.env`); the scripts in `scripts/` read it from there. `off` = no key (local development only) |
 | `DATABASE_PATH` | readings database, default `data/readings.db` |
 | `WEATHER_CACHE_DIR` | saved Open-Meteo answers, default `data/weather_cache` (next to the database) |
 | `SOLAR_LIB_PATH` | path of a custom `libsolarsight` build |
-| `WEATHER_PROVIDER`, `TOMORROW_API_KEY` | reserved for a Tomorrow.io fallback, **not implemented yet** (Open-Meteo is the only provider) |
-| `LOG_LEVEL` | `INFO` by default |
+| `LOG_LEVEL` | `INFO` by default (the start-up line says whether writes need a key) |
 
 ### API
 
@@ -125,7 +124,7 @@ The two pictures at the top use real weather. The others were taken with the bun
 | `GET /api/current-weather` | weather now at a site, for the map chips (cached on the server) |
 | `POST /api/readings`, `GET /api/readings`, `GET /api/readings/summary` | plug-in measurements (`power_w`, `soc_kwh`, `cloud_fraction`); simulated rows stay labelled |
 | `POST /api/camera/analyze` | measure a sky photo on the server, only if the PyTorch model is installed there (otherwise 501) |
-| `POST /api/explain` | the AI explanation for a forecast just made; falls back to the template |
+| `POST /api/explain` | the AI explanation for a forecast just made; falls back to the template. Open (the page calls it), so the same forecast is sent to the LLM only once and at most 60 LLM calls an hour are made |
 | `GET /api/calibration`, `POST /api/calibration/reset` | the learned performance ratio per system |
 | `GET /api/health` | `{"status": "ok"}` |
 

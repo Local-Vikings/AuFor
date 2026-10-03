@@ -86,7 +86,6 @@
       <!-- Full-viewport map stage -->
       <div class="map-stage">
         <div id="map"></div>
-        <div id="cloud-overlay" class="cloud-overlay"></div>
 
         <!-- Top-left: back + live coords -->
         <div class="map-hud map-hud-tl">
@@ -136,9 +135,9 @@
             <div class="tl-ends"><span id="tl-start"></span><span id="tl-end"></span></div>
           </div>
           <div class="tl-toggles">
-            <button id="toggle-clouds" class="tl-chip is-active" type="button">Clouds</button>
-            <button id="toggle-wind" class="tl-chip" type="button">Wind</button>
-            <button id="toggle-flow" class="tl-chip is-active" type="button">Flow</button>
+            <button id="toggle-clouds" class="tl-chip is-active" type="button" aria-pressed="true">Clouds</button>
+            <button id="toggle-wind" class="tl-chip" type="button" aria-pressed="false">Wind</button>
+            <button id="toggle-flow" class="tl-chip is-active" type="button" aria-pressed="true">Flow</button>
           </div>
         </div>
         <div id="hover-pill" class="hover-pill" hidden></div>

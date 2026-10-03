@@ -47,7 +47,7 @@ def test_native_and_python_agree_on_a_full_chain() -> None:
         tc = solar.cell_temperature(np.full(len(t), 15.0), poa, 45.0, engine=engine)
         dc = solar.dc_power(poa, tc, 4000.0, -0.004, engine=engine)
         outputs[engine] = (zenith, azimuth, poa, solar.ac_power(dc, 0.8, 3000.0, engine=engine))
-    for native_values, python_values in zip(outputs["native"], outputs["python"]):
+    for native_values, python_values in zip(outputs["native"], outputs["python"], strict=True):
         np.testing.assert_allclose(native_values, python_values, atol=1e-6)
 
 

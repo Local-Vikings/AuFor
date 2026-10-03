@@ -100,7 +100,7 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temp:
-        env = {**os.environ, "DATABASE_PATH": str(Path(temp) / "shots.db"), "LLM_ENABLED": "0", "READINGS_API_KEY": ""}
+        env = {**os.environ, "DATABASE_PATH": str(Path(temp) / "shots.db"), "LLM_ENABLED": "0", "READINGS_API_KEY": "off"}
         env["USE_MOCK_WEATHER"] = "1" if args.mock else "0"
         url = f"http://127.0.0.1:{PORT}"
         server = subprocess.Popen([sys.executable, "-m", "uvicorn", "main:app", "--port", str(PORT), "--log-level", "warning"], env=env, cwd=ROOT)

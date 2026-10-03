@@ -6,6 +6,8 @@ belong in the domain modules described by bible.md.
 
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -14,12 +16,23 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app import config
 from app.config import CARTO_API_KEY
 from app.routes import router as api_router
 
 BASE_DIR = Path(__file__).resolve().parent
 
-app = FastAPI(title="AuFor")
+logging.basicConfig(level=config.LOG_LEVEL.upper(), format="%(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("aufor")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    logger.info(config.ensure_readings_api_key())
+    yield
+
+
+app = FastAPI(title="AuFor", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")

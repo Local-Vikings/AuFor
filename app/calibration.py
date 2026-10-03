@@ -97,7 +97,7 @@ def _estimate_from(hourly: pd.DataFrame, rows: list[dict], source: str) -> Estim
     labels = ((hourly.index.tz_convert("UTC") - _EPOCH).total_seconds()).to_numpy().astype(int)
     usable = {
         int(label): float(p_dc)
-        for label, p_dc, poa, clipped in zip(labels, hourly["p_dc_w"], hourly["g_poa"], hourly["clipped"])
+        for label, p_dc, poa, clipped in zip(labels, hourly["p_dc_w"], hourly["g_poa"], hourly["clipped"], strict=True)
         if poa > CALIBRATION_MIN_IRRADIANCE_W_M2 and p_dc > 0 and not clipped
     }
     buckets: dict[int, list[float]] = {}

@@ -90,6 +90,8 @@ def test_analyze_rejects_empty_oversized_and_unreadable_uploads(monkeypatch: pyt
     assert client.post("/api/camera/analyze", content=b"").status_code == 422
     monkeypatch.setattr("app.routes.CLOUD_MAX_IMAGE_BYTES", 10)
     assert client.post("/api/camera/analyze", content=PHOTO).status_code == 413
+    streamed = (PHOTO[i:i + 4] for i in range(0, len(PHOTO), 4))  # chunked, no Content-Length: counted while reading
+    assert client.post("/api/camera/analyze", content=streamed).status_code == 413
     monkeypatch.setattr("app.routes.CLOUD_MAX_IMAGE_BYTES", 10_000)
 
     def unreadable(image, radius):

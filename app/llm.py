@@ -12,7 +12,7 @@ import logging
 import re
 import time
 import uuid
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,6 +32,8 @@ SYSTEM_PROMPT = (
 MAX_RECOMMENDATIONS = 4
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 _MEMORY: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
+_ANSWERS: "OrderedDict[str, str]" = OrderedDict()  # LLM text per summary: the same forecast is paid for once
+_CALL_TIMES: "deque[float]" = deque()  # model calls in the last hour, for LLM_MAX_CALLS_PER_HOUR
 
 
 @dataclass(frozen=True)
@@ -175,10 +177,27 @@ def _call_model(summary: dict) -> str:
         return str(response.json()["content"][0]["text"]).strip()
 
 
+def _within_budget() -> bool:
+    """Count a model call against LLM_MAX_CALLS_PER_HOUR; False when the hour's budget is spent."""
+    now = time.monotonic()
+    while _CALL_TIMES and now - _CALL_TIMES[0] > 3600:
+        _CALL_TIMES.popleft()
+    if len(_CALL_TIMES) >= config.LLM_MAX_CALLS_PER_HOUR:
+        return False
+    _CALL_TIMES.append(now)
+    return True
+
+
 def explain(summary: dict) -> Explanation:
     """Explain a forecast summary; falls back to the template. Never raises."""
     fallback = Explanation(template_explanation(summary), "template")
     if not available():
+        return fallback
+    key = json.dumps(summary, sort_keys=True)
+    if key in _ANSWERS:
+        return Explanation(_ANSWERS[key], "llm")
+    if not _within_budget():
+        logger.warning("LLM budget of %d calls an hour is spent; using the template.", config.LLM_MAX_CALLS_PER_HOUR)
         return fallback
     try:
         text = str(_call_model(summary)).strip()
@@ -188,6 +207,9 @@ def explain(summary: dict) -> Explanation:
     if not text or not is_grounded(text, summary):
         logger.warning("LLM explanation was empty or contained numbers that are not in the data; using the template.")
         return fallback
+    _ANSWERS[key] = text
+    while len(_ANSWERS) > config.EXPLAIN_CACHE_SIZE:
+        _ANSWERS.popitem(last=False)
     return Explanation(text, "llm")
 
 

@@ -98,7 +98,6 @@ def test_without_the_switch_or_the_key_the_model_is_never_called(monkeypatch: py
         raise AssertionError("the model must not be called")
 
     monkeypatch.setattr(llm, "_call_model", boom)
-    summary = {"x": 1}
     monkeypatch.setattr("app.config.LLM_ENABLED", False)
     monkeypatch.setattr("app.config.LLM_API_KEY", "key")
     assert not llm.available()
@@ -193,3 +192,22 @@ def test_explain_endpoint_falls_back_with_200_when_the_model_fails(llm_on, monke
 def test_explain_endpoint_rejects_unknown_ids_and_bad_bodies() -> None:
     assert client.post("/api/explain", json={"explain_id": "nope"}).status_code == 404
     assert client.post("/api/explain", json={}).status_code == 422
+
+
+def test_the_same_forecast_calls_the_model_once_and_the_hourly_budget_caps_calls(llm_on, monkeypatch: pytest.MonkeyPatch) -> None:
+    summary = summary_of()
+    calls = []
+
+    def model(s):
+        calls.append(s)
+        return f"About {s['energy']['total_kwh']} kWh."
+
+    monkeypatch.setattr(llm, "_call_model", model)
+    assert llm.explain(summary).source == "llm" and llm.explain(summary).source == "llm"
+    assert len(calls) == 1  # asking again for the same forecast costs nothing
+
+    monkeypatch.setattr("app.config.LLM_MAX_CALLS_PER_HOUR", 2)
+    other = {**summary, "period": {**summary["period"], "days": 99}}
+    assert llm.explain(other).source == "llm" and len(calls) == 2
+    third = {**summary, "period": {**summary["period"], "days": 98}}
+    assert llm.explain(third).source == "template" and len(calls) == 2  # budget spent: template, no call

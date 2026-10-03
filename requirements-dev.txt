@@ -1,0 +1,4 @@
+# Tests and tooling, not needed to run AuFor (the Docker image uses requirements.txt only)
+-r requirements.txt
+pytest==8.3.4
+ruff

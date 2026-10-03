@@ -166,6 +166,12 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 data/weather_cache/
+data/.env
+# sky-model run outputs (cloud_predictor.py) and the Pi agent's retry buffer
+outputs/
+predictions.jsonl
+pending_readings.jsonl
+checkpoints/
 .spyderproject
 .spyproject
 

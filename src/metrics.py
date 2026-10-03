@@ -1,4 +1,3 @@
-import torch
 
 
 def iou(pred, target):

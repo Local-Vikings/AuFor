@@ -14,9 +14,24 @@ def offline_weather(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def temporary_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """A server started in a test must never write a generated key into the developer's .env."""
+    monkeypatch.setattr("app.config.ENV_FILE", tmp_path / ".env")
+
+
+@pytest.fixture(autouse=True)
 def temporary_weather_cache(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Cached Open-Meteo answers never leak between tests (or from the developer's data/ folder)."""
     monkeypatch.setattr("app.weather.WEATHER_CACHE_DIR", str(tmp_path / "weather_cache"))
+
+
+@pytest.fixture(autouse=True)
+def fresh_llm_budget() -> None:
+    """Remembered LLM answers and the hourly call count start empty in every test."""
+    from app import llm
+
+    llm._ANSWERS.clear()
+    llm._CALL_TIMES.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -24,4 +39,4 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Whatever is in the developer's .env (LLM key, API key) must not change what tests do."""
     monkeypatch.setattr("app.config.LLM_ENABLED", False)
     monkeypatch.setattr("app.config.LLM_API_KEY", "")
-    monkeypatch.setattr("app.config.READINGS_API_KEY", "")
+    monkeypatch.setattr("app.config.READINGS_API_KEY", "off")

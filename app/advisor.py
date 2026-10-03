@@ -31,18 +31,19 @@ from app.solar import SolarError, optimize
 
 logger = logging.getLogger(__name__)
 
+MIN_GAIN = 0.05  # Optimize rule: suggest a new orientation only above 5% more clear-sky sun a year
 
 
-MIN_GAIN = 0.05 
-
-
-def optimize_rule(lat, lon, panels, hour, pr=DEFAULT_PERFORMANCE_RATIO):
-
+def optimize_rule(
+    lat: float, lon: float, panels: list[PanelConfig], hour: datetime, pr: float = DEFAULT_PERFORMANCE_RATIO
+) -> list[Recommendation]:
+    """Optimize (T20): one card per panel group whose tilt or azimuth loses more than MIN_GAIN of the
+    clear-sky yearly irradiance. Needs the native library; without it there are no cards."""
     res = []
     for p in panels:
         r = optimize(lat, lon, hour.year, p.tilt, p.azimuth)
-        if r is None:
-            return []  
+        if r is None:  # no native library: the same for every group
+            return []
         now, tilt, az, best = r
         if now <= 0 or best / now - 1 <= MIN_GAIN:
             continue
@@ -55,7 +56,7 @@ def optimize_rule(lat, lon, panels, hour, pr=DEFAULT_PERFORMANCE_RATIO):
             reason=f"Panels at tilt {p.tilt:.0f} deg, azimuth {p.azimuth:.0f} deg get {now:.0f} "
                    f"kWh/m2 in a clear-sky year. With tilt {tilt:.0f} deg and azimuth {az:.0f} "
                    f"deg they would get {best:.0f} kWh/m2 (+{gain:.0f}%).",
-            kwh_effect=round(kwp * pr * (best - now), 1),  
+            kwh_effect=round(kwp * pr * (best - now), 1),
         ))
     return res
 

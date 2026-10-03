@@ -108,7 +108,7 @@ def build_forecast(
     p_ac = np.sum([result[2] for result in results], axis=0)
     p_dc = np.sum([result[3] for result in results], axis=0)
     clipped = np.any(
-        [r[3] * pr >= g.inverter_max_w * CALIBRATION_CLIP_MARGIN for r, g in zip(results, groups)], axis=0
+        [r[3] * pr >= g.inverter_max_w * CALIBRATION_CLIP_MARGIN for r, g in zip(results, groups, strict=True)], axis=0
     )
     g_poa = np.average([result[0] for result in results], axis=0, weights=weights)
     t_cell = np.average([result[1] for result in results], axis=0, weights=weights)

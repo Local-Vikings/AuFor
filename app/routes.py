@@ -209,9 +209,9 @@ def current_weather(
 
 
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
-    """Writes need the shared X-API-Key when READINGS_API_KEY is set; with no key set they stay open (development)."""
+    """Writes need the shared X-API-Key. The server sets a key at start-up unless READINGS_API_KEY is "off"."""
     wanted = settings.READINGS_API_KEY
-    if wanted and not (x_api_key and secrets.compare_digest(x_api_key.encode(), wanted.encode())):
+    if wanted and wanted.lower() != "off" and not (x_api_key and secrets.compare_digest(x_api_key.encode(), wanted.encode())):
         raise HTTPException(status_code=401, detail="missing or wrong X-API-Key header")
 
 
@@ -272,11 +272,18 @@ async def analyze_sky_photo(request: Request, radius: int = Query(default=CLOUD_
     Only works where the PyTorch model is installed. Otherwise answer 501: run the model on the camera
     machine instead (scripts/pi_cloud_agent.py) and POST the number to /api/readings.
     """
-    image = await request.body()
+    too_large = HTTPException(status_code=413, detail="photo is too large")
+    if int(request.headers.get("content-length") or 0) > CLOUD_MAX_IMAGE_BYTES:
+        raise too_large
+    chunks, size = [], 0
+    async for chunk in request.stream():  # stop reading as soon as the limit is passed
+        size += len(chunk)
+        if size > CLOUD_MAX_IMAGE_BYTES:
+            raise too_large
+        chunks.append(chunk)
+    image = b"".join(chunks)
     if not image:
         raise HTTPException(status_code=422, detail="send the photo as the raw request body")
-    if len(image) > CLOUD_MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="photo is too large")
     try:
         free = await run_in_threadpool(vision.measure_free_percent, image, radius)
     except vision.ModelUnavailable as error:

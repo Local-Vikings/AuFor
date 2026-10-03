@@ -6,11 +6,16 @@ solar calculations, or persist readings.
 
 from __future__ import annotations
 
+import logging
 import os
+import re
+import secrets
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+ENV_FILE = Path(os.getenv("AUFOR_ENV_FILE", ".env"))
+load_dotenv(ENV_FILE)
 
 SOFIA_LAT = 42.6977
 SOFIA_LON = 23.3219
@@ -73,13 +78,12 @@ MAX_HOURLY_RESOLUTION_DAYS = 31
 CARTO_API_KEY = os.getenv("CARTO_API_KEY", "")
 
 USE_MOCK_WEATHER = os.getenv("USE_MOCK_WEATHER", "0") == "1"
-WEATHER_PROVIDER = os.getenv("WEATHER_PROVIDER", "auto")
-TOMORROW_API_KEY = os.getenv("TOMORROW_API_KEY", "")
 LLM_ENABLED = os.getenv("LLM_ENABLED", "0") == "1"
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
 LLM_TIMEOUT_SECONDS = 10.0
 LLM_MAX_TOKENS = 300
+LLM_MAX_CALLS_PER_HOUR = 60  # /api/explain is public (the page calls it): past this, the template text is used
 EXPLAIN_CACHE_SIZE = 64  # forecast summaries kept so the page can ask for the AI text afterwards
 EXPLAIN_CACHE_SECONDS = 3600.0
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/readings.db")
@@ -88,7 +92,9 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "data/readings.db")
 WEATHER_CACHE_DIR = os.getenv("WEATHER_CACHE_DIR", os.path.join(os.path.dirname(DATABASE_PATH) or ".", "weather_cache"))
 WEATHER_CACHE_SECONDS = 900.0
 WEATHER_STALE_MAX_SECONDS = 24 * 3600.0
-READINGS_API_KEY = os.getenv("READINGS_API_KEY", "")  # if set, writes need the X-API-Key header
+# Writes (readings, camera, calibration reset) need this in the X-API-Key header. Unset or empty: the server
+# generates one at start-up and saves it to .env (see ensure_readings_api_key). "off": writes stay open.
+READINGS_API_KEY = os.getenv("READINGS_API_KEY", "").strip()
 CLOUD_ROI_RADIUS_PX = 150  # camera model: radius of the circle the cloud fraction is measured in
 CLOUD_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 READING_FUTURE_TOLERANCE_S = 300  # a sensor clock may run a few minutes ahead
@@ -96,3 +102,31 @@ READINGS_MAX_HOURS = 24 * 30
 REAL_READING_SOURCES = ("battery", "panel", "camera")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 SOLAR_LIB_PATH = os.getenv("SOLAR_LIB_PATH", "")
+
+
+def ensure_readings_api_key(env_file: Path | None = None) -> str:
+    """Make sure writes are protected: generate READINGS_API_KEY if none is set and save it to ``env_file``.
+
+    Returns what happened, for the start-up log. Scripts on the same machine (fake_readings.py,
+    pi_cloud_agent.py) read the key from .env themselves; other machines need --api-key.
+    """
+    global READINGS_API_KEY
+    env_file = env_file or ENV_FILE
+    if READINGS_API_KEY.lower() == "off":
+        READINGS_API_KEY = ""
+        return "READINGS_API_KEY=off: writes to /api/readings are open to anyone"
+    if READINGS_API_KEY:
+        return "writes to /api/readings need the X-API-Key header (READINGS_API_KEY)"
+    READINGS_API_KEY = secrets.token_urlsafe(24)
+    line = f"READINGS_API_KEY={READINGS_API_KEY}"
+    try:
+        text = env_file.read_text() if env_file.exists() else ""
+        if re.search(r"^READINGS_API_KEY=.*$", text, flags=re.M):
+            text = re.sub(r"^READINGS_API_KEY=.*$", line, text, flags=re.M)
+        else:
+            text += ("" if not text or text.endswith("\n") else "\n") + line + "\n"
+        env_file.write_text(text)
+    except OSError as error:
+        logging.getLogger(__name__).warning("could not save the generated key to %s: %s", env_file, error)
+        return f"generated a READINGS_API_KEY for this run only ({READINGS_API_KEY}); set it in .env to keep it"
+    return f"generated READINGS_API_KEY and saved it to {env_file}; sensors and scripts send it as X-API-Key"

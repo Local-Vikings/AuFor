@@ -179,7 +179,7 @@ print(response.status_code, len(response.json().get("hourly", [])) if response.s
 
 
 def run_offline(mock: str, tmp_path) -> subprocess.CompletedProcess:
-    env = {**os.environ, "USE_MOCK_WEATHER": mock, "DATABASE_PATH": str(tmp_path / "offline.db"), "LLM_ENABLED": "0", "READINGS_API_KEY": ""}
+    env = {**os.environ, "USE_MOCK_WEATHER": mock, "DATABASE_PATH": str(tmp_path / "offline.db"), "LLM_ENABLED": "0", "READINGS_API_KEY": "off"}
     return subprocess.run([sys.executable, "-c", OFFLINE_SCRIPT, json.dumps(BODY)], cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
 
 
