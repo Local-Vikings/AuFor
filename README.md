@@ -1,6 +1,6 @@
-# SolarSight
+# AuFor
 
-**Plan your solar energy before it arrives.** SolarSight forecasts how much electricity your solar panels will
+**Plan your solar energy before it arrives.** AuFor forecasts how much electricity your solar panels will
 produce (hours to a year ahead), simulates your battery, and tells you **when to use, store or save energy**. It
 turns the weather forecast into a number *and a decision*, and it gets more accurate the more real data you connect.
 
@@ -67,6 +67,9 @@ Open <http://127.0.0.1:8000> (intro) and <http://127.0.0.1:8000/calculator> (the
    `📷 91% cloud`.
 
 ## Screenshots
+
+Taken with the bundled mock weather (the page labels it `MOCK (SIMULATED)`) and simulated readings, so they are
+reproducible. Regenerate them with `python scripts/make_screenshots.py` (add `--mock` to work offline; it needs Playwright).
 
 | | |
 |---|---|
@@ -174,7 +177,7 @@ ESP32 or Pi can post `power_w` to `/api/readings` the same way (not built yet).
 app/            FastAPI modules: weather, pipeline, solar (C++ wrapper), battery, advisor, calibration, readings, llm, clouds
 native/         C++17 solar core (build.sh) and its header
 templates/      the single page (intro and calculator)    static/   app.js and style.css (no build step)
-scripts/        validate.py, fake_readings.py, pi_cloud_agent.py
+scripts/        validate.py, fake_readings.py, pi_cloud_agent.py, make_screenshots.py
 tests/          about 250 offline tests, incl. the end-to-end smoke test
 docker/         Dockerfile (docker-compose.yml is in the root)
 src/, cloud_predictor.py   the PyTorch sky model (run on the Pi)

@@ -1,4 +1,4 @@
-"""Fetch and parse hourly weather data for SolarSight.
+"""Fetch and parse hourly weather data for AuFor.
 
 This module owns Open-Meteo access and the offline mock-weather switch. It does
 not calculate solar power, simulate batteries, or translate errors into HTTP responses.
@@ -110,12 +110,26 @@ def parse_weather(payload: dict[str, Any]) -> pd.DataFrame:
     return frame
 
 
+def _status_message(response: httpx.Response) -> str:
+    """A short, readable reason for an HTTP error (never the request URL, which can be thousands of characters)."""
+    try:
+        reason = str(response.json().get("reason", ""))
+    except ValueError:
+        reason = ""
+    if response.status_code == 429:
+        return (f"Open-Meteo's free request limit is used up for now ({reason or 'HTTP 429'}). "
+                "Try again later, or run with USE_MOCK_WEATHER=1 to work offline")
+    return f"Open-Meteo answered HTTP {response.status_code}" + (f": {reason}" if reason else "")
+
+
 def _get_json(url: str, params: dict[str, Any]) -> dict[str, Any]:
     try:
         with httpx.Client(timeout=WEATHER_TIMEOUT_SECONDS) as client:
             response = client.get(url, params=params)
             response.raise_for_status()
             return response.json()
+    except httpx.HTTPStatusError as error:
+        raise WeatherError(f"Unable to fetch weather: {_status_message(error.response)}") from error
     except (httpx.HTTPError, ValueError) as error:
         raise WeatherError(f"Unable to fetch weather from Open-Meteo: {error}") from error
 

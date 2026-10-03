@@ -1,4 +1,4 @@
-"""HTTP routes for the SolarSight API.
+"""HTTP routes for the AuFor API.
 
 Routes validate and serialize requests only; the calculation lives in app.pipeline.
 Recommendations come from app.advisor.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sky-camera agent for the Raspberry Pi: photo -> cloud fraction -> SolarSight server.
+"""Sky-camera agent for the Raspberry Pi: photo -> cloud fraction -> AuFor server.
 
 Runs on the machine that has the camera and tx's PyTorch model. It takes a sky photo,
 measures the cloud fraction with cloud_predictor.run (the same code tx wrote), and POSTs
@@ -72,7 +72,7 @@ def post_reading(server: str, reading: dict, api_key: str | None = None, timeout
         if error.code == 409:
             return "duplicate"  # the server already has this reading
         if error.code in (401, 403):
-            raise AuthError("the server refused the API key (check --api-key / SOLARSIGHT_API_KEY)") from error
+            raise AuthError("the server refused the API key (check --api-key / AUFOR_API_KEY)") from error
         if error.code == 429 or error.code >= 500:
             return "retry"
         detail = error.read().decode(errors="replace")[:200]
@@ -180,9 +180,9 @@ def cycle(args: argparse.Namespace) -> str:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Measure cloud cover from a sky photo and send it to SolarSight.")
-    parser.add_argument("--server", default=os.environ.get("SOLARSIGHT_SERVER", "http://127.0.0.1:8000"))
-    parser.add_argument("--api-key", default=os.environ.get("SOLARSIGHT_API_KEY"))
+    parser = argparse.ArgumentParser(description="Measure cloud cover from a sky photo and send it to AuFor.")
+    parser.add_argument("--server", default=os.environ.get("AUFOR_SERVER", "http://127.0.0.1:8000"))
+    parser.add_argument("--api-key", default=os.environ.get("AUFOR_API_KEY"))
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--image", help="measure this photo instead of taking one")
     source.add_argument("--capture-cmd", help='camera command with {path}, e.g. "rpicam-still -n -t 500 -o {path}"')
@@ -200,7 +200,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    print(f"SolarSight camera agent -> {args.server} (every {args.interval:.0f}s, radius {args.radius}px)")
+    print(f"AuFor camera agent -> {args.server} (every {args.interval:.0f}s, radius {args.radius}px)")
     while True:
         print(time.strftime("%H:%M:%S"))
         try:

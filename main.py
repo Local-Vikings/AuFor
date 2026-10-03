@@ -1,4 +1,4 @@
-"""FastAPI entry point for SolarSight.
+"""FastAPI entry point for AuFor.
 
 This module owns application assembly and basic HTTP routes. Forecast calculations
 belong in the domain modules described by bible.md.
@@ -19,7 +19,7 @@ from app.routes import router as api_router
 
 BASE_DIR = Path(__file__).resolve().parent
 
-app = FastAPI(title="SolarSight")
+app = FastAPI(title="AuFor")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")

@@ -146,7 +146,7 @@ def test_every_page_and_endpoint_answers() -> None:
     assert client.get("/api/health").json() == {"status": "ok"}
     for path in ("/", "/calculator"):
         page = client.get(path)
-        assert page.status_code == 200 and "SolarSight" in page.text
+        assert page.status_code == 200 and "AuFor" in page.text
     for asset in ("/static/app.js", "/static/style.css"):
         assert client.get(asset).status_code == 200
     field = client.get("/api/cloud-field", params={"south": 41.5, "west": 21.7, "north": 43.9, "east": 24.9, "hours": 48}).json()

@@ -161,7 +161,7 @@ venv.bak/
 .idea/
 .vscode/settings.json
 
-# SolarSight runtime data
+# AuFor runtime data
 data/*.db
 data/*.sqlite
 data/*.sqlite3

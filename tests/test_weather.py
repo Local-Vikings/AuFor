@@ -187,3 +187,54 @@ def test_parse_weather_survives_the_daylight_saving_change() -> None:
     frame = weather.parse_weather(payload)
     assert frame.index.is_unique and frame.index.is_monotonic_increasing
     assert len(frame) >= 8
+
+
+def test_a_rate_limit_gives_a_short_readable_message_not_the_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Limited:
+        status_code = 429
+
+        def json(self) -> dict:
+            return {"error": True, "reason": "Daily API request limit exceeded. Please try again tomorrow."}
+
+    class FakeClient:
+        def __init__(self, *, timeout: float) -> None:
+            pass
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, *args: object) -> bool:
+            return False
+
+        def get(self, url: str, params: dict) -> object:
+            request = httpx.Request("GET", url, params={"latitude": ",".join(["42.5"] * 600)})
+            response = httpx.Response(429, json=Limited().json(), request=request)
+            response.raise_for_status()
+
+    monkeypatch.setattr(weather.httpx, "Client", FakeClient)
+    with pytest.raises(weather.WeatherError) as caught:
+        weather._get_json(weather.OPEN_METEO_URL, {})
+    message = str(caught.value)
+    assert "free request limit" in message and "try again tomorrow" in message.lower() and "USE_MOCK_WEATHER=1" in message
+    assert "latitude" not in message and len(message) < 300  # no 4 KB URL
+
+
+def test_other_http_errors_name_the_status_without_the_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __init__(self, *, timeout: float) -> None:
+            pass
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, *args: object) -> bool:
+            return False
+
+        def get(self, url: str, params: dict) -> object:
+            response = httpx.Response(503, text="down", request=httpx.Request("GET", url))
+            response.raise_for_status()
+
+    monkeypatch.setattr(weather.httpx, "Client", FakeClient)
+    with pytest.raises(weather.WeatherError, match="Open-Meteo answered HTTP 503") as caught:
+        weather._get_json(weather.OPEN_METEO_URL, {})
+    assert "http" not in str(caught.value).lower().replace("http 503", "")

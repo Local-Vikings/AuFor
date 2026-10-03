@@ -547,7 +547,7 @@ function initMap() {
   cloudPane.style.zIndex = 350;
   cloudPane.classList.add("cloud-pane");
   L.control.zoom({ position: "bottomright" }).addTo(map);
-  const cartoKey = window.SOLARSIGHT_CONFIG?.cartoApiKey;
+  const cartoKey = window.AUFOR_CONFIG?.cartoApiKey;
   const tileUrl = cartoKey
     ? `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(cartoKey)}`
     : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
@@ -841,12 +841,12 @@ function nearestFieldIndex(epoch, toleranceSeconds) {
 
 function currentEpoch() { return cloudField ? cloudField.times[timeIndex] : null; }
 
-function showHoverPill(text) {
+function showHoverPill(text, ms = 2200) {
   const pill = document.getElementById("hover-pill");
   pill.textContent = text;
   pill.hidden = false;
   clearTimeout(pillTimer);
-  pillTimer = setTimeout(() => { pill.hidden = true; }, 2200);
+  pillTimer = setTimeout(() => { pill.hidden = true; }, ms);
 }
 
 function togglePlay() {
@@ -916,7 +916,8 @@ async function loadCloudField(view) {
     payload = body;
   } catch (error) {
     if (request !== fieldRequest) return;
-    if (String(error.message).includes("zoom in")) showHoverPill("Zoom in to see the cloud forecast");
+    const reason = String(error.message || "");
+    showHoverPill(reason.includes("zoom in") ? "Zoom in to see the cloud forecast" : `Cloud map unavailable: ${reason.slice(0, 160)}`, 9000);
     if (!cloudField) timeline.hidden = true;
     return;
   }
@@ -1038,7 +1039,7 @@ function applyPreset(button) {
 /* ── Theme ───────────────────────────────────────────────────────── */
 function toggleTheme() {
   document.body.classList.toggle("dark-theme");
-  localStorage.setItem("solarsight-theme", document.body.classList.contains("dark-theme") ? "dark" : "light");
+  localStorage.setItem("aufor-theme", document.body.classList.contains("dark-theme") ? "dark" : "light");
   if (map) map.invalidateSize();
   updateSunNow(getLat(), getLon());
   renderCloudFrame();
@@ -1051,7 +1052,7 @@ function toggleTheme() {
 /* ── Boot ────────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
   addPanelGroup();
-  if (localStorage.getItem("solarsight-theme") === "dark") document.body.classList.add("dark-theme");
+  if (localStorage.getItem("aufor-theme") === "dark") document.body.classList.add("dark-theme");
 
   initView();
 

@@ -1,1 +1,1 @@
-"""SolarSight application package."""
+"""AuFor application package."""

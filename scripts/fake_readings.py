@@ -128,8 +128,8 @@ def run_once(args: argparse.Namespace, request: dict, rng: random.Random) -> dic
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Post SIMULATED power readings for the calibration demo.")
-    parser.add_argument("--server", default=os.environ.get("SOLARSIGHT_SERVER", "http://127.0.0.1:8000"))
-    parser.add_argument("--api-key", default=os.environ.get("SOLARSIGHT_API_KEY"))
+    parser.add_argument("--server", default=os.environ.get("AUFOR_SERVER", "http://127.0.0.1:8000"))
+    parser.add_argument("--api-key", default=os.environ.get("AUFOR_API_KEY"))
     parser.add_argument("--config", help="JSON file with a forecast request (default: the page's default system)")
     parser.add_argument("--bias", type=float, default=0.92, help="the fake system produces this share of what PR 0.80 predicts")
     parser.add_argument("--noise", type=float, default=0.08, help="standard deviation of the relative noise")

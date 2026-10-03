@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SolarSight | Energy planning</title>
+    <title>AuFor | Energy planning</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -12,9 +12,9 @@
   </head>
   <body data-view="{{ view }}">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="SolarSight home">
+      <a class="brand" href="/" aria-label="AuFor home">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>SolarSight</span>
+        <span>AuFor</span>
       </a>
       <div class="topbar-meta">
         <nav class="view-tabs" aria-label="Main views">
@@ -31,9 +31,9 @@
     <div id="landing-wrap" {% if view == "calculator" %}hidden{% endif %}>
       <section id="landing-view" class="landing-view reveal">
         <div class="landing-hero">
-          <p class="kicker">SOLARSIGHT / ATANASOFF__48 / ENERGIA OKOLO NAS</p>
+          <p class="kicker">AUFOR / ATANASOFF__48 / ENERGIA OKOLO NAS</p>
           <h1>Plan the energy<br /><em>before it arrives.</em></h1>
-          <p class="hero-sub">A forecast isn't useful unless it tells you what to do. SolarSight predicts solar production, simulates your battery, and turns numbers into decisions.</p>
+          <p class="hero-sub">A forecast isn't useful unless it tells you what to do. AuFor predicts solar production, simulates your battery, and turns numbers into decisions.</p>
           <a href="/calculator" class="primary-button landing-button"><span>Open calculator</span><b>↗</b></a>
         </div>
 
@@ -279,11 +279,11 @@
       </div>
     </section>
 
-    <footer><span>SOLARSIGHT / PROTOTYPE</span><span>WEATHER + PHYSICS + DECISIONS</span></footer>
+    <footer><span>AUFOR / PROTOTYPE</span><span>WEATHER + PHYSICS + DECISIONS</span></footer>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script>window.SOLARSIGHT_CONFIG = { cartoApiKey: {{ carto_api_key | tojson }} };</script>
+    <script>window.AUFOR_CONFIG = { cartoApiKey: {{ carto_api_key | tojson }} };</script>
     <script src="{{ url_for('static', path='app.js') }}?v={{ asset_v }}"></script>
   </body>
 </html>

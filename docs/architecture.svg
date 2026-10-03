@@ -21,7 +21,7 @@
   </defs>
 
   <rect width="1180" height="700" fill="#ffffff"/>
-  <text x="40" y="38" class="title" style="font-size:18px">SolarSight: how the data flows</text>
+  <text x="40" y="38" class="title" style="font-size:18px">AuFor: how the data flows</text>
   <text x="40" y="58" class="sub">Weather in, physics and a battery model in the middle, a decision and an explanation out. Dashed orange boxes are optional plug-ins.</text>
 
   <!-- INPUTS -->
@@ -66,7 +66,7 @@
 
   <!-- SERVER -->
   <rect x="330" y="85" width="520" height="585" rx="10" class="zone"/>
-  <text x="348" y="110" class="title">SOLARSIGHT SERVER (FastAPI, Docker)</text>
+  <text x="348" y="110" class="title">AUFOR SERVER (FastAPI, Docker)</text>
 
   <rect x="348" y="125" width="484" height="50" rx="8" class="box"/>
   <text x="362" y="147" class="label">routes.py</text>

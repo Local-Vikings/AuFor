@@ -1,4 +1,4 @@
-"""Pydantic schemas for the SolarSight API.
+"""Pydantic schemas for the AuFor API.
 
 This module validates API data and describes response shapes. It does not perform
 forecast calculations, access the network, or write to SQLite.
