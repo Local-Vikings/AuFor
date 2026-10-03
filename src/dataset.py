@@ -18,12 +18,7 @@ class SkyDataset(Dataset):
     def __getitem__(self, idx):
         img = cv2.cvtColor(cv2.imread(self.image_paths[idx]), cv2.COLOR_BGR2RGB)
         mask = cv2.imread(self.mask_paths[idx], cv2.IMREAD_GRAYSCALE)
-
-        # 0 = camera mask  -> 255 (ignored by loss)
-        # 1 = sky          -> 0
-        # 2/3/4 = clouds   -> 1
         mask = np.where(mask == 1, 0, np.where(mask >= 2, 1, 255)).astype(np.uint8)
-
         aug = self.transform(image=img, mask=mask)
         return aug["image"], aug["mask"].unsqueeze(0).float()
 
