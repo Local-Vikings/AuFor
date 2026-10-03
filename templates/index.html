@@ -127,6 +127,22 @@
           </div>
         </div>
 
+        <!-- Bottom: cloud forecast timeline -->
+        <div class="map-hud map-timeline" id="map-timeline" hidden>
+          <button id="cloud-play" class="tl-play" type="button" aria-label="Play cloud forecast">▶</button>
+          <div class="tl-main">
+            <div class="tl-top"><span id="tl-time">—</span><span id="tl-cloud">—</span></div>
+            <input id="tl-range" class="tl-range" type="range" min="0" max="71" value="0" step="1" aria-label="Forecast hour" />
+            <div class="tl-ends"><span id="tl-start"></span><span id="tl-end"></span></div>
+          </div>
+          <div class="tl-toggles">
+            <button id="toggle-clouds" class="tl-chip is-active" type="button">Clouds</button>
+            <button id="toggle-wind" class="tl-chip is-active" type="button">Wind</button>
+            <button id="toggle-flow" class="tl-chip" type="button">Flow</button>
+          </div>
+        </div>
+        <div id="hover-pill" class="hover-pill" hidden></div>
+
         <!-- Right sidebar: configuration form -->
         <form id="forecast-form" class="map-sidebar">
           <div class="sidebar-header">
@@ -201,6 +217,7 @@
           <div class="status-item"><span class="status-icon">☼</span><span><small>WEATHER</small><strong id="weather-status">READY</strong></span></div>
           <div class="status-item"><span class="status-icon">◎</span><span><small>CALIBRATION</small><strong id="calibration-status">NOT CALIBRATED</strong></span></div>
           <div class="status-item"><span class="status-icon">⌁</span><span><small>READINGS</small><strong id="readings-status">NONE CONNECTED</strong></span></div>
+          <div class="status-item"><span class="status-icon">⚙</span><span><small>PHYSICS ENGINE</small><strong id="engine-status">NOT RUN YET</strong></span></div>
           <div class="status-time"><small>LAST MODEL RUN</small><strong id="last-run">NOT RUN YET</strong></div>
         </section>
 
@@ -209,11 +226,21 @@
             <div><p class="section-label">03 / MODEL OUTPUT</p><h2>Energy outlook</h2></div>
             <span id="result-badge" class="result-badge">AWAITING FORECAST</span>
           </div>
+          <div id="impact-row" class="impact-row" aria-label="Weather impact">
+            <div class="impact-tile"><small>TOTAL ENERGY</small><strong id="kpi-energy">—</strong><span id="kpi-energy-sub"></span></div>
+            <div class="impact-tile"><small>AVG CLOUD COVER (DAYLIGHT)</small><strong id="kpi-cloud">—</strong><span id="kpi-cloud-sub"></span></div>
+            <div class="impact-tile"><small>LOST TO CLOUDS</small><strong id="kpi-loss">—</strong><span id="kpi-loss-sub"></span></div>
+            <div class="impact-tile"><small id="kpi-best-label">BEST DAY</small><strong id="kpi-best">—</strong><span id="kpi-best-sub"></span></div>
+          </div>
           <div class="chart-grid">
             <article id="hourly-card" class="chart-card chart-wide">
               <div class="chart-title"><span>Hourly flow</span><small>POWER / W</small></div>
               <canvas id="hourly-chart"></canvas>
               <div class="legend"><span class="legend-solar">Solar production</span><span class="legend-load">Household load</span></div>
+            </article>
+            <article id="cloud-card" class="chart-card chart-wide">
+              <div class="chart-title"><span id="cloud-title">Cloud forecast and sunshine</span><small id="cloud-unit">CLOUD % / SUN W/M²</small></div>
+              <canvas id="cloud-chart"></canvas>
             </article>
             <article id="daily-card" class="chart-card"><div class="chart-title"><span id="daily-title">Daily yield</span><small>ENERGY / KWH</small></div><canvas id="daily-chart"></canvas></article>
             <article id="soc-card" class="chart-card"><div class="chart-title"><span>Battery charge</span><small>STATE / KWH</small></div><canvas id="soc-chart"></canvas></article>

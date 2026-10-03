@@ -11,11 +11,12 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from app import solar
+from app import battery, solar
 from app.config import (
     DEFAULT_ALBEDO,
     DEFAULT_PERFORMANCE_RATIO,
     FORECAST_DT_H,
+    LOAD_PROFILE_KWH,
     WEATHER_INTERVAL_SHIFT_S,
 )
 from app.models import ForecastRequest, PanelConfig
@@ -107,14 +108,33 @@ def build_forecast(
     g_poa = np.average([result[0] for result in results], axis=0, weights=weights)
     t_cell = np.average([result[1] for result in results], axis=0, weights=weights)
 
-    load_w = request.load.daily_kwh * 1000.0 / 24.0
+    ghi_clear, p_ac_clear = _clear_sky(groups, weather, zenith, azimuth, t_utc, pr)
+    # Real irradiance can beat the clear-sky model for a moment; never report a negative cloud loss.
+    ghi_clear = np.maximum(ghi_clear, weather["ghi"].to_numpy())
+    p_ac_clear = np.maximum(p_ac_clear, p_ac)
+
+    shape = np.array(LOAD_PROFILE_KWH)
+    load_w = request.load.daily_kwh * 1000.0 * (shape / shape.sum())[weather.index.hour]
+    cfg = request.battery
+    sim = battery.simulate(
+        p_ac / 1000.0, load_w / 1000.0, cfg.capacity_kwh, cfg.dod, cfg.eta_c, cfg.eta_d,
+        cfg.max_power_kw, cfg.initial_soc_kwh, FORECAST_DT_H,
+    )
     hourly = pd.DataFrame(
         {
             "ghi": weather["ghi"].to_numpy(),
             "g_poa": g_poa,
             "t_cell": t_cell,
             "p_ac_w": p_ac,
-            "load_w": np.full(len(weather), load_w),
+            "load_w": load_w,
+            "soc_kwh": sim.soc_kwh,
+            "grid_import_w": sim.import_kw * 1000.0,
+            "grid_export_w": sim.export_kw * 1000.0,
+            "cloud_cover": weather["cloud_cover"].to_numpy(),
+            "temp_air": weather["temp_air"].to_numpy(),
+            "wind_ms": weather["wind"].to_numpy(),
+            "ghi_clear": ghi_clear,
+            "p_ac_clear_w": p_ac_clear,
         },
         index=weather.index,
     )
@@ -128,16 +148,41 @@ def build_forecast(
     )
 
 
+def _clear_sky(
+    groups: list[PanelConfig],
+    weather: pd.DataFrame,
+    zenith: np.ndarray,
+    azimuth: np.ndarray,
+    t_utc: np.ndarray,
+    pr: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Clear-sky GHI and the AC power the same system would give under it (bible 9.7)."""
+    ghi, dni, dhi = solar.irradiance_from_clouds(zenith, np.zeros(len(zenith)), t_utc)
+    clear_weather = weather.assign(ghi=ghi, dni=dni, dhi=dhi)
+    power = [_group_power(g, clear_weather, zenith, azimuth, pr)[2] for g in groups]
+    return ghi, np.sum(power, axis=0)
+
+
+def _cloud_loss_pct(produced_kwh: float, clear_kwh: float) -> float:
+    """Share of the clear-sky energy that clouds took away, in percent."""
+    return 100.0 * (1.0 - produced_kwh / clear_kwh) if clear_kwh > 0 else 0.0
+
+
 def _daily_totals(hourly: pd.DataFrame) -> pd.DataFrame:
-    """Daily kWh and the share of production used directly by the load (no battery)."""
+    """Daily kWh, the share of solar energy kept on site (used or stored) and cloud losses."""
     rows = {}
     for day, chunk in hourly.groupby(hourly.index.date):
         produced = solar.energy_kwh(chunk["p_ac_w"].to_numpy(), FORECAST_DT_H)
-        direct = solar.energy_kwh(
-            np.minimum(chunk["p_ac_w"], chunk["load_w"]).to_numpy(), FORECAST_DT_H
-        )
-        share = 100.0 * direct / produced if produced > 0 else 0.0
-        rows[day.isoformat()] = {"kwh": produced, "self_consumption_pct": share}
+        clear = solar.energy_kwh(chunk["p_ac_clear_w"].to_numpy(), FORECAST_DT_H)
+        exported = solar.energy_kwh(chunk["grid_export_w"].to_numpy(), FORECAST_DT_H)
+        daylight = chunk[chunk["ghi_clear"] > 0]
+        rows[day.isoformat()] = {
+            "kwh": produced,
+            "self_consumption_pct": 100.0 * (1.0 - exported / produced) if produced > 0 else 0.0,
+            "avg_cloud_cover": float(daylight["cloud_cover"].mean()) if len(daylight) else 0.0,
+            "clear_sky_kwh": clear,
+            "cloud_loss_pct": _cloud_loss_pct(produced, clear),
+        }
     return pd.DataFrame.from_dict(rows, orient="index")
 
 
@@ -147,9 +192,14 @@ def _monthly_totals(daily: pd.DataFrame) -> pd.DataFrame:
     for month, chunk in daily.groupby(daily.index.str[:7]):
         kwh = float(chunk["kwh"].sum())
         weighted = float((chunk["kwh"] * chunk["self_consumption_pct"]).sum())
+        clear = float(chunk["clear_sky_kwh"].sum())
+        cloud = float((chunk["avg_cloud_cover"] * chunk["clear_sky_kwh"]).sum())
         rows[month] = {
             "days": len(chunk),
             "kwh": kwh,
             "self_consumption_pct": weighted / kwh if kwh > 0 else 0.0,
+            "avg_cloud_cover": cloud / clear if clear > 0 else 0.0,
+            "clear_sky_kwh": clear,
+            "cloud_loss_pct": _cloud_loss_pct(kwh, clear),
         }
     return pd.DataFrame.from_dict(rows, orient="index")

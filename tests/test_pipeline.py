@@ -133,3 +133,79 @@ def test_horizon_limits_return_422() -> None:
     assert hourly_too_long.status_code == 422
     assert "hourly resolution supports at most 31 days" in hourly_too_long.text
     assert client.post("/api/forecast", json={**BODY, "resolution": "weekly"}).status_code == 422
+
+
+needs_native = pytest.mark.skipif(solar.ENGINE != "native", reason="native library not built")
+
+
+def optimize_cards(data: dict) -> list[dict]:
+    return [card for card in data["recommendations"] if card["subtopic"] == "optimize"]
+
+
+@needs_native
+def test_north_facing_roof_gets_an_optimize_card() -> None:
+    body = {**BODY, "panel": {**PANEL, "azimuth": 0}}
+    cards = optimize_cards(client.post("/api/forecast", json=body).json())
+    assert len(cards) == 1
+    assert cards[0]["kwh_effect"] > 0
+    assert "azimuth 180" in cards[0]["title"]
+
+
+@needs_native
+def test_good_orientation_gets_no_optimize_card() -> None:
+    assert optimize_cards(client.post("/api/forecast", json=BODY).json()) == []
+
+
+@needs_native
+def test_only_the_bad_panel_group_is_flagged() -> None:
+    bad = {**PANEL, "azimuth": 0, "count": 4}
+    body = {key: value for key, value in BODY.items() if key != "panel"}
+    cards = optimize_cards(client.post("/api/forecast", json={**body, "panels": [PANEL, bad]}).json())
+    assert len(cards) == 1 and "azimuth 0" in cards[0]["reason"]
+
+
+def test_page_has_status_chips() -> None:
+    page = client.get("/calculator").text
+    for element_id in ("weather-status", "calibration-status", "readings-status", "engine-status"):
+        assert f'id="{element_id}"' in page
+
+
+def cloudy(weather, cloud_pct=90.0, keep=0.25):
+    dim = weather.copy()
+    dim[["ghi", "dni", "dhi"]] = dim[["ghi", "dni", "dhi"]] * keep
+    dim["cloud_cover"] = cloud_pct
+    return dim
+
+
+def test_hourly_rows_carry_the_weather_forecast() -> None:
+    hourly = pipeline.build_forecast(request(), cloudy(make_mock_weather(1))).hourly
+    for column in ("cloud_cover", "temp_air", "wind_ms", "ghi_clear", "p_ac_clear_w"):
+        assert column in hourly.columns
+    assert (hourly["cloud_cover"] == 90.0).all()
+    assert (hourly["p_ac_clear_w"] >= hourly["p_ac_w"]).all()
+    assert (hourly["ghi_clear"] >= hourly["ghi"]).all()
+
+
+def test_clouds_cost_energy_and_clear_days_cost_almost_none() -> None:
+    clear = pipeline.build_forecast(request(), make_mock_weather(1)).daily.iloc[0]
+    dim = pipeline.build_forecast(request(), cloudy(make_mock_weather(1))).daily.iloc[0]
+    assert dim["cloud_loss_pct"] > 60 and dim["cloud_loss_pct"] > clear["cloud_loss_pct"] + 40
+    assert dim["avg_cloud_cover"] == pytest.approx(90.0)
+    assert dim["kwh"] < dim["clear_sky_kwh"]
+    assert dim["kwh"] == pytest.approx(clear["kwh"] * 0.25, rel=0.35)
+
+
+def test_monthly_cloud_numbers_are_consistent_with_daily() -> None:
+    weather = cloudy(make_mock_weather(45), cloud_pct=60.0, keep=0.5)
+    result = pipeline.build_forecast(request(days=45, resolution="daily"), weather)
+    assert result.monthly["clear_sky_kwh"].sum() == pytest.approx(result.daily["clear_sky_kwh"].sum())
+    assert result.monthly["avg_cloud_cover"].between(0, 100).all()
+    assert result.monthly["cloud_loss_pct"].between(0, 100).all()
+
+
+def test_route_returns_cloud_fields() -> None:
+    data = client.post("/api/forecast", json=BODY).json()
+    assert {"cloud_cover", "temp_air", "wind_ms", "ghi_clear", "p_ac_clear_w"} <= set(data["hourly"][0])
+    assert {"avg_cloud_cover", "clear_sky_kwh", "cloud_loss_pct"} <= set(data["daily"][0])
+    monthly = client.post("/api/forecast", json={**BODY, "days": 60, "resolution": "monthly"}).json()
+    assert {"avg_cloud_cover", "clear_sky_kwh", "cloud_loss_pct"} <= set(monthly["monthly"][0])

@@ -15,7 +15,7 @@ from app.config import MAX_HORIZON_DAYS, MAX_HOURLY_RESOLUTION_DAYS
 
 ReadingSource = Literal["battery", "panel", "camera", "simulated"]
 ReadingType = Literal["soc_kwh", "power_w", "cloud_fraction"]
-Subtopic = Literal["use", "direct", "optimize", "store"]
+Subtopic = Literal["use", "direct", "optimize", "store", "warning"]
 Resolution = Literal["hourly", "daily", "monthly"]
 
 
@@ -134,6 +134,11 @@ class HourlyForecast(BaseModel):
     soc_kwh: float = Field(ge=0)
     grid_import_w: float = Field(ge=0)
     grid_export_w: float = Field(ge=0)
+    cloud_cover: float = Field(ge=0, le=100)  # percent, from the weather forecast
+    temp_air: float  # degrees C
+    wind_ms: float = Field(ge=0)
+    ghi_clear: float = Field(ge=0)  # clear-sky GHI, the sunshine clouds take away from
+    p_ac_clear_w: float = Field(ge=0)  # AC power this system would give under a clear sky
 
 
 class DailyForecast(BaseModel):
@@ -142,6 +147,9 @@ class DailyForecast(BaseModel):
     date: str
     kwh: float = Field(ge=0)
     self_consumption_pct: float = Field(ge=0, le=100)
+    avg_cloud_cover: float = Field(ge=0, le=100)  # daylight hours only
+    clear_sky_kwh: float = Field(ge=0)
+    cloud_loss_pct: float = Field(ge=0, le=100)
 
 
 class MonthlyForecast(BaseModel):
@@ -151,6 +159,9 @@ class MonthlyForecast(BaseModel):
     days: int = Field(gt=0)
     kwh: float = Field(ge=0)
     self_consumption_pct: float = Field(ge=0, le=100)
+    avg_cloud_cover: float = Field(ge=0, le=100)
+    clear_sky_kwh: float = Field(ge=0)
+    cloud_loss_pct: float = Field(ge=0, le=100)
 
 
 class Recommendation(BaseModel):
