@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ReadingSource = Literal["battery", "panel", "camera", "simulated"]
 ReadingType = Literal["soc_kwh", "power_w", "cloud_fraction"]
@@ -67,10 +67,23 @@ class ForecastRequest(BaseModel):
 
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
-    panel: PanelConfig
+    panel: PanelConfig | None = None
+    panels: list[PanelConfig] | None = None
     battery: BatteryConfig
     load: LoadConfig
-    days: int = Field(default=3, ge=1, le=7)
+    days: int = Field(default=3, ge=1, le=30)
+
+    @model_validator(mode="after")
+    def require_panel_configuration(self) -> "ForecastRequest":
+        """Require either the legacy panel object or one or more panel groups."""
+        if self.panel is None and not self.panels:
+            raise ValueError("provide panel or panels with at least one panel group")
+        return self
+
+    @property
+    def panel_groups(self) -> list[PanelConfig]:
+        """Return panel groups using the new or legacy request shape."""
+        return self.panels or [self.panel]  # type: ignore[list-item]
 
 
 class ReadingCreate(BaseModel):

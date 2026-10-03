@@ -3,12 +3,126 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SolarSight</title>
+    <title>SolarSight | Energy planning</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}" />
   </head>
   <body>
-    <main>
-      <h1>SolarSight</h1>
-      <p>Solar production planning dashboard.</p>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="SolarSight home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>SolarSight</span>
+      </a>
+      <div class="topbar-meta">
+        <nav class="view-tabs" aria-label="Main views">
+          <button class="view-tab is-active" data-view="landing" type="button">01 / INTRO</button>
+          <button class="view-tab" data-view="calculator" type="button">02 / CALCULATOR</button>
+        </nav>
+        <span class="eyebrow">ENERGY PLANNING / SOFIA</span>
+        <span class="system-dot"><i></i> SYSTEM READY</span>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle dark theme">◐</button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section id="landing-view" class="landing-view reveal">
+        <div>
+          <p class="kicker">SOLARSIGHT / ENERGY INTELLIGENCE</p>
+          <h1>Plan the energy<br /><em>before it arrives.</em></h1>
+        </div>
+        <div class="landing-copy">
+          <p class="intro-copy">Configure every panel group, map the site, and see when to use, store, or send energy back to the grid.</p>
+          <button id="open-calculator" class="primary-button landing-button" type="button"><span>Open calculator</span><b>↗</b></button>
+        </div>
+      </section>
+
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+
+      <section id="calculator-view" class="calculator-view" hidden>
+      <div class="calculator-topline"><div><p class="kicker">CALCULATOR / SITE MODEL</p><h1 class="calculator-title">Your energy map.</h1></div><button id="back-to-intro" class="text-button" type="button">← Intro</button></div>
+      <section class="workspace reveal delay-1">
+        <div class="map-panel panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">01 / SITE LOCATION</p>
+              <h2>Where are your panels?</h2>
+            </div>
+            <span class="live-pill"><i></i> MAP</span>
+          </div>
+          <div id="map" class="map"></div>
+          <div class="coordinates">
+            <label>LAT <input id="lat" type="number" step="0.0001" value="42.6977" /></label>
+            <label>LON <input id="lon" type="number" step="0.0001" value="23.3219" /></label>
+            <span class="location-note">Click map to move site</span>
+          </div>
+        </div>
+
+        <form id="forecast-form" class="config-panel panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">02 / SYSTEM PROFILE</p>
+              <h2>What are we modelling?</h2>
+            </div>
+            <span id="horizon-label" class="config-number">3 DAYS</span>
+          </div>
+
+          <fieldset>
+            <legend>Solar array</legend>
+            <div id="panel-groups" class="panel-groups"></div>
+            <button id="add-panel-group" class="secondary-button" type="button">+ Add panel group</button>
+          </fieldset>
+
+          <fieldset>
+            <legend>Battery storage</legend>
+            <div class="field-grid three">
+              <label>Capacity <input id="battery-capacity" type="number" min="0" step="0.1" value="10" /><small>kWh</small></label>
+              <label>Starting charge <input id="initial-soc" type="number" min="0" step="0.1" value="5" /><small>kWh</small></label>
+              <label>Max power <input id="battery-power" type="number" min="0" step="0.1" value="5" /><small>kW</small></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Household load</legend>
+            <div class="field-grid two">
+              <label>Daily consumption <input id="daily-load" type="number" min="0.1" step="0.1" value="12" /><small>kWh / day</small></label>
+              <label>Forecast horizon <select id="days"><option value="1">Daily / 1 day</option><option value="3" selected>3 days</option><option value="7">Weekly / 7 days</option><option value="30">Monthly / 30 days</option></select></label>
+            </div>
+          </fieldset>
+
+          <button id="forecast-button" class="primary-button" type="submit"><span>Run energy forecast</span><b>↗</b></button>
+        </form>
+      </section>
+
+      <section class="status-row reveal delay-2" aria-label="Forecast status">
+        <div class="status-item"><span class="status-icon weather-icon">☼</span><span><small>WEATHER</small><strong id="weather-status">READY</strong></span></div>
+        <div class="status-item"><span class="status-icon">◎</span><span><small>CALIBRATION</small><strong id="calibration-status">NOT CALIBRATED</strong></span></div>
+        <div class="status-item"><span class="status-icon">⌁</span><span><small>READINGS</small><strong id="readings-status">NONE CONNECTED</strong></span></div>
+        <div class="status-time"><small>LAST MODEL RUN</small><strong id="last-run">NOT RUN YET</strong></div>
+      </section>
+
+      <section id="results" class="results reveal delay-3">
+        <div class="section-intro"><div><p class="section-label">03 / MODEL OUTPUT</p><h2>Energy outlook</h2></div><span id="result-badge" class="result-badge">AWAITING FORECAST</span></div>
+        <div class="chart-grid">
+          <article class="chart-card chart-wide"><div class="chart-title"><span>Hourly flow</span><small>POWER / W</small></div><canvas id="hourly-chart"></canvas><div class="legend"><span class="legend-solar">Solar production</span><span class="legend-load">Household load</span></div></article>
+          <article class="chart-card"><div class="chart-title"><span>Daily yield</span><small>ENERGY / KWH</small></div><canvas id="daily-chart"></canvas></article>
+          <article class="chart-card"><div class="chart-title"><span>Battery charge</span><small>STATE / KWH</small></div><canvas id="soc-chart"></canvas></article>
+        </div>
+      </section>
+
+      <section class="recommendations reveal delay-4">
+        <div class="section-intro"><div><p class="section-label">04 / DECISION LAYER</p><h2>What should happen next?</h2></div><span class="decision-note">NUMBERS → ACTIONS</span></div>
+        <div id="recommendation-list" class="recommendation-list"><div class="empty-state">Run a forecast to turn production numbers into decisions.</div></div>
+      </section>
+      </section>
     </main>
+
+    <footer><span>SOLARSIGHT / PROTOTYPE</span><span>WEATHER + PHYSICS + DECISIONS</span></footer>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script>window.SOLARSIGHT_CONFIG = { cartoApiKey: {{ carto_api_key | tojson }} };</script>
+    <script src="{{ url_for('static', path='app.js') }}"></script>
   </body>
 </html>

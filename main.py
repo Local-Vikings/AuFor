@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.config import CARTO_API_KEY
 from app.routes import router as api_router
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -26,7 +27,9 @@ app.include_router(api_router)
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     """Render the SolarSight dashboard shell."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(
+        "index.html", {"request": request, "carto_api_key": CARTO_API_KEY}
+    )
 
 
 @app.get("/api/health")
