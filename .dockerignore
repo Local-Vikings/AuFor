@@ -5,3 +5,6 @@ __pycache__/
 *.pyc
 .pytest_cache
 data/*.db
+native/*.so
+native/*.dll
+native/*.dylib
