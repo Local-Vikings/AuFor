@@ -230,3 +230,4 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+checkpoint/best.pth
