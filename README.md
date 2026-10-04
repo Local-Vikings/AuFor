@@ -1,5 +1,11 @@
 # AuFor
 
+## Demo
+[aufor.0red.me](https://aufor.0red.me/)
+
+## Presentation
+[Presentation (pptx)](docs/presentation.pptx)
+
 **Plan your solar energy before it arrives.** AuFor forecasts how much electricity your solar panels will
 produce (hours to a year ahead), simulates your battery, and tells you **when to use, store or save energy**. It
 turns the weather forecast into a number *and a decision*, and it gets more accurate the more real data you connect.
