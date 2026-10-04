@@ -10,14 +10,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
 
 from infer import load_model, predict_prob, circle_mask
+from model import build_model
 
 
 OUT_DIR = os.path.join(HERE, "outputs")
 LOG_PATH = os.path.join(HERE, "predictions.jsonl")
 os.makedirs(OUT_DIR, exist_ok=True)
 
-MODEL_SIZE = 512
-THRESHOLD = 0.14
+MODEL_SIZE = 384
+THRESHOLD = 0.3327
 
 
 def prompt(msg, default=None, cast=str):
@@ -44,22 +45,11 @@ def unletterbox(prob, meta, oh, ow):
     return cv2.resize(prob[t:t + nh, l:l + nw], (ow, oh))
 
 
-def detect_sun_mask(img_bgr, bright_pct=98.5, grow_frac=2.0):
-    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    thr = np.percentile(gray, bright_pct)
-    bright = (gray >= thr).astype(np.uint8) * 255
-    num, labels, stats, _ = cv2.connectedComponentsWithStats(bright, 8)
-    if num <= 1:
-        return np.zeros_like(gray, dtype=np.uint8)
-    areas = stats[1:, cv2.CC_STAT_AREA]
-    largest = 1 + int(np.argmax(areas))
-    sun = (labels == largest).astype(np.uint8) * 255
-    x, y, w, h = stats[largest, cv2.CC_STAT_LEFT], stats[largest, cv2.CC_STAT_TOP], \
-                 stats[largest, cv2.CC_STAT_WIDTH], stats[largest, cv2.CC_STAT_HEIGHT]
-    r = int(max(w, h) * grow_frac / 2)
-    cx, cy = x + w // 2, y + h // 2
-    cv2.circle(sun, (cx, cy), max(r, 20), 255, -1)
-    k = max(5, int(r * 0.3) | 1)
+def detect_sun_mask(img_bgr):
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    sun = ((hsv[:, :, 2] > 250) & (hsv[:, :, 1] < 20)).astype(np.uint8) * 255
+    k = 15
+    sun = cv2.dilate(sun, np.ones((k, k), np.uint8), iterations=1)
     return cv2.GaussianBlur(sun, (k, k), 0)
 
 
@@ -89,12 +79,12 @@ def run(image_path, radius, label):
     rm = circle_mask(oh, ow, center, radius)
 
     sm = detect_sun_mask(img).astype(np.float32) / 255.0
-    prob = prob * (1.0 - sm)
-    rm = rm * (1.0 - sm)
+    valid_region = rm * (1.0 - sm)
 
-    cloud = ((prob > THRESHOLD).astype(np.float32) * rm).sum()
-    total = rm.sum() + 1e-6
-    free = (1.0 - cloud / total) * 100.0
+    cloud_probs = np.clip((prob - THRESHOLD) / (1.0 - THRESHOLD), 0.0, 1.0)
+    cloud_pixels = (cloud_probs * valid_region).sum()
+    total_valid = valid_region.sum() + 1e-6
+    free = (1.0 - (cloud_pixels / total_valid)) * 100.0
 
     out_img = img.copy()
     cv2.circle(out_img, center, radius, (0, 255, 0), 3)
@@ -134,7 +124,7 @@ def main():
     print("-" * 60)
     print(f"  Input image:    {image_path}")
     print(f"  Circle radius:  {radius} px")
-   # print(f"  Threshold:      {THRESHOLD}")
+    print(f"  Threshold:      {THRESHOLD}")
     print(f"  FREE SKY VIEW:  {free:.1f}%")
     print(f"  Saved image:    {out}")
     print(f"  Logged to:      {LOG_PATH}")

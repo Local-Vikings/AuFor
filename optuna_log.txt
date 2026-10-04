@@ -1,0 +1,95 @@
+(.venv) tensorex@acernitro5:~/Documents/PyCharm/Hackathon-Model/src$ python train.py
+[I 2026-10-04 00:05:23,507] A new study created in memory with name: no-name-ef34eb48-a418-443f-bef3-f917c3f9294a
+Starting Optuna search for 30 trials...
+[I 2026-10-04 00:08:11,781] Trial 0 finished with value: 0.8067989292598906 and parameters: {'lr': 0.00011966513904318949, 'tversky_beta': 0.7636883600109885, 'threshold': 0.2054004154472885}. Best is trial 0 with value: 0.8067989292598906.
+[I 2026-10-04 00:11:01,799] Trial 1 finished with value: 0.7946803541410536 and parameters: {'lr': 0.0004859842414827586, 'tversky_beta': 0.8264659178909575, 'threshold': 0.21417248679382261}. Best is trial 0 with value: 0.8067989292598906.
+[I 2026-10-04 00:13:55,389] Trial 2 finished with value: 0.8030189446040562 and parameters: {'lr': 0.000179752483691407, 'tversky_beta': 0.6576604285985825, 'threshold': 0.14446273038232993}. Best is trial 0 with value: 0.8067989292598906.
+[I 2026-10-04 00:16:50,198] Trial 3 finished with value: 0.8381620673906236 and parameters: {'lr': 0.00023718339719004696, 'tversky_beta': 0.5369982214708774, 'threshold': 0.2395712726956378}. Best is trial 3 with value: 0.8381620673906236.
+[I 2026-10-04 00:19:44,736] Trial 4 finished with value: 0.8184135811669486 and parameters: {'lr': 0.00017721998126507391, 'tversky_beta': 0.5733567091466749, 'threshold': 0.20077057188643033}. Best is trial 3 with value: 0.8381620673906236.
+[I 2026-10-04 00:22:36,610] Trial 5 finished with value: 0.8306234180927277 and parameters: {'lr': 0.00011032201274029197, 'tversky_beta': 0.7667186038229259, 'threshold': 0.34558654309230596}. Best is trial 3 with value: 0.8381620673906236.
+[I 2026-10-04 00:25:27,359] Trial 6 finished with value: 0.8243774062111264 and parameters: {'lr': 0.000544928546874229, 'tversky_beta': 0.5418183866242178, 'threshold': 0.3364985391185909}. Best is trial 3 with value: 0.8381620673906236.
+[I 2026-10-04 00:26:24,469] Trial 7 pruned.
+[I 2026-10-04 00:29:12,805] Trial 8 finished with value: 0.8378571044831049 and parameters: {'lr': 0.00010870402486536238, 'tversky_beta': 0.540368714440891, 'threshold': 0.3414374068440512}. Best is trial 3 with value: 0.8381620673906236.
+[I 2026-10-04 00:30:37,024] Trial 9 pruned.
+[I 2026-10-04 00:32:43,958] Trial 10 pruned.
+[I 2026-10-04 00:35:31,958] Trial 11 finished with value: 0.8251362726801917 and parameters: {'lr': 0.000341735111759023, 'tversky_beta': 0.5193014452714461, 'threshold': 0.2746435321935879}. Best is trial 3 with value: 0.8381620673906236.
+[I 2026-10-04 00:37:10,553] Trial 12 pruned.
+[I 2026-10-04 00:39:59,444] Trial 13 finished with value: 0.840910690171378 and parameters: {'lr': 0.00010250437024848695, 'tversky_beta': 0.641750539456468, 'threshold': 0.34521343872875304}. Best is trial 13 with value: 0.840910690171378.
+[I 2026-10-04 00:40:56,285] Trial 14 pruned.
+[I 2026-10-04 00:41:53,437] Trial 15 pruned.
+[I 2026-10-04 00:42:50,348] Trial 16 pruned.
+[I 2026-10-04 00:43:47,163] Trial 17 pruned.
+[I 2026-10-04 00:45:26,036] Trial 18 pruned.
+[I 2026-10-04 00:46:22,635] Trial 19 pruned.
+[I 2026-10-04 00:48:02,810] Trial 20 pruned.
+[I 2026-10-04 00:50:51,237] Trial 21 finished with value: 0.8460467060407003 and parameters: {'lr': 0.00018849551255600136, 'tversky_beta': 0.5161700356420962, 'threshold': 0.34406954574927406}. Best is trial 21 with value: 0.8460467060407003.
+[I 2026-10-04 00:53:39,966] Trial 22 finished with value: 0.833018109911964 and parameters: {'lr': 0.00014754420612851822, 'tversky_beta': 0.5127570577034243, 'threshold': 0.26940713415891615}. Best is trial 21 with value: 0.8460467060407003.
+[I 2026-10-04 00:54:36,419] Trial 23 pruned.
+[I 2026-10-04 00:56:42,678] Trial 24 pruned.
+[I 2026-10-04 00:58:20,676] Trial 25 pruned.
+[I 2026-10-04 01:01:08,050] Trial 26 finished with value: 0.8487574003991627 and parameters: {'lr': 0.00016159053617576874, 'tversky_beta': 0.531053500716819, 'threshold': 0.3326959605493827}. Best is trial 26 with value: 0.8487574003991627.
+[I 2026-10-04 01:02:46,192] Trial 27 pruned.
+[I 2026-10-04 01:03:41,920] Trial 28 pruned.
+[I 2026-10-04 01:05:18,819] Trial 29 pruned.
+
+==================================================
+OPTUNA TUNING COMPLETE
+==================================================
+Best Trial Value (IoU): 0.8488
+Best Parameters:
+  lr: 0.00016159053617576874
+  tversky_beta: 0.531053500716819
+  threshold: 0.3326959605493827
+==================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+[I 2026-10-04 02:08:31,864] A new study created in memory with name: no-name-c4d27a03-a436-4cb7-bc78-9e4d490a9a66
+New best IoU: 0.8335 saved to /home/tensorex/Documents/PyCharm/Hackathon-Model/checkpoints/best.pth
+[I 2026-10-04 02:17:29,444] Trial 0 finished with value: 0.8334653787314892 and parameters: {'lr': 4.3284502212938785e-05, 'weight_decay': 0.006351221010640704, 'tversky_beta': 0.7927975767245621, 'threshold': 0.379597545259111}. Best is trial 0 with value: 0.8334653787314892.
+New best IoU: 0.8338 saved to /home/tensorex/Documents/PyCharm/Hackathon-Model/checkpoints/best.pth
+[I 2026-10-04 02:26:25,862] Trial 1 finished with value: 0.8338094018399715 and parameters: {'lr': 1.8410729205738674e-05, 'weight_decay': 4.207053950287936e-06, 'tversky_beta': 0.5232334448672797, 'threshold': 0.45985284373248053}. Best is trial 1 with value: 0.8338094018399715.
+New best IoU: 0.8469 saved to /home/tensorex/Documents/PyCharm/Hackathon-Model/checkpoints/best.pth
+[I 2026-10-04 02:35:17,607] Trial 2 finished with value: 0.846870556473732 and parameters: {'lr': 0.00010502105436744271, 'weight_decay': 0.0006796578090758161, 'tversky_beta': 0.508233797718321, 'threshold': 0.4909729556485983}. Best is trial 2 with value: 0.846870556473732.
+[I 2026-10-04 02:44:08,681] Trial 3 finished with value: 0.8416361957788467 and parameters: {'lr': 0.00025959425503112657, 'weight_decay': 7.068974950624607e-06, 'tversky_beta': 0.5727299868828403, 'threshold': 0.2550213529560302}. Best is trial 2 with value: 0.846870556473732.
+[I 2026-10-04 02:53:00,370] Trial 4 finished with value: 0.8256384395062923 and parameters: {'lr': 3.2877474139911175e-05, 'weight_decay': 0.0001256104370001356, 'tversky_beta': 0.6727780074568463, 'threshold': 0.2873687420594126}. Best is trial 2 with value: 0.846870556473732.
+[I 2026-10-04 03:01:51,512] Trial 5 finished with value: 0.8420780375599861 and parameters: {'lr': 0.00010952662748632558, 'weight_decay': 3.6138942712165278e-06, 'tversky_beta': 0.6168578594140872, 'threshold': 0.3099085529881075}. Best is trial 2 with value: 0.846870556473732.
+[I 2026-10-04 03:02:21,557] Trial 6 pruned.
+[I 2026-10-04 03:02:51,603] Trial 7 pruned.
+[I 2026-10-04 03:03:21,544] Trial 8 pruned.
+[I 2026-10-04 03:03:51,525] Trial 9 pruned.
+[I 2026-10-04 03:04:21,523] Trial 10 pruned.
+New best IoU: 0.8533 saved to /home/tensorex/Documents/PyCharm/Hackathon-Model/checkpoints/best.pth
+[I 2026-10-04 03:13:13,032] Trial 11 finished with value: 0.8533116430044174 and parameters: {'lr': 0.0001706340597796299, 'weight_decay': 0.00018755339990416284, 'tversky_beta': 0.6082795377658965, 'threshold': 0.47403700246660196}. Best is trial 11 with value: 0.8533116430044174.
+[I 2026-10-04 03:13:43,009] Trial 12 pruned.
+[I 2026-10-04 03:22:34,872] Trial 13 finished with value: 0.8462282828986645 and parameters: {'lr': 0.0002497140673304552, 'weight_decay': 9.645738396814157e-05, 'tversky_beta': 0.6365752235771582, 'threshold': 0.47845425073037157}. Best is trial 11 with value: 0.8533116430044174.
+[I 2026-10-04 03:23:04,893] Trial 14 pruned.
+[I 2026-10-04 03:28:30,030] Trial 15 pruned.
+[I 2026-10-04 03:33:54,816] Trial 16 pruned.
+[I 2026-10-04 03:34:24,808] Trial 17 pruned.
+[I 2026-10-04 03:37:51,797] Trial 18 pruned.
+[I 2026-10-04 03:38:21,765] Trial 19 pruned.
+[I 2026-10-04 03:38:51,710] Trial 20 pruned.
+[I 2026-10-04 03:39:21,666] Trial 21 pruned.
+[I 2026-10-04 03:48:13,422] Trial 22 finished with value: 0.8515438623726368 and parameters: {'lr': 0.00011249248679249494, 'weight_decay': 0.0003025651532288628, 'tversky_beta': 0.6771812019871849, 'threshold': 0.45972141537058625}. Best is trial 11 with value: 0.8533116430044174.
+[I 2026-10-04 03:48:43,524] Trial 23 pruned.
+[I 2026-10-04 03:49:13,440] Trial 24 pruned.
+[I 2026-10-04 03:50:12,806] Trial 25 pruned.
+[I 2026-10-04 03:59:04,347] Trial 26 finished with value: 0.8458249308168888 and parameters: {'lr': 9.41286516765189e-05, 'weight_decay': 0.0005732759913598584, 'tversky_beta': 0.7338369506521686, 'threshold': 0.47510432600412295}. Best is trial 11 with value: 0.8533116430044174.
+[I 2026-10-04 03:59:34,376] Trial 27 pruned.
+[I 2026-10-04 04:00:04,335] Trial 28 pruned.
+[I 2026-10-04 04:00:34,237] Trial 29 pruned.
+
+=== OPTUNA TUNING COMPLETE ===
+Best Trial Value (IoU): 0.8533
+Best Parameters: {'lr': 0.0001706340597796299, 'weight_decay': 0.00018755339990416284, 'tversky_beta': 0.6082795377658965, 'threshold': 0.47403700246660196}
