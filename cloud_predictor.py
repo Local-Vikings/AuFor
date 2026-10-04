@@ -58,9 +58,19 @@ def append_log(record):
         f.write(json.dumps(record) + "\n")
 
 
+_model = None
+
+
+def get_model():
+    global _model
+    if _model is None:
+        _model = load_model()
+    return _model
+
+
 def run(image_path, radius, label):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = load_model()
+    model = get_model()
 
     img = cv2.imread(image_path)
     if img is None:

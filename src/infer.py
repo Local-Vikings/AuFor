@@ -9,7 +9,9 @@ from dataset import get_transforms
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CKPT_PATH = os.path.join(PROJECT_ROOT, "checkpoints", "best.pth")
+CKPT_PATH = os.path.join(PROJECT_ROOT, "checkpoint", "best.pth")
+if not os.path.exists(CKPT_PATH):
+    CKPT_PATH = os.path.join(PROJECT_ROOT, "checkpoints", "best.pth")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -19,7 +21,7 @@ _, val_tf = get_transforms(size=512)
 def load_model(ckpt=CKPT_PATH):
     if not os.path.exists(ckpt):
         raise FileNotFoundError(f"No checkpoint at {ckpt}")
-    m = build_model().to(device)
+    m = build_model(encoder_weights=None).to(device)  # weights come from the checkpoint
     m.load_state_dict(torch.load(ckpt, map_location=device))
     m.eval()
     return m

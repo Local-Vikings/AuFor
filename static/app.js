@@ -411,7 +411,7 @@ function readingsTag(rows) {
   return { text: simulated ? `REAL · ${real} + SIMULATED · ${simulated}` : `REAL · ${noun(real)}`, simulated: simulated > 0 };
 }
 
-function readingsDatasets(rows, forecast) {
+function readingsDatasets(rows, forecast, cloudRows = []) {
   const point = (r) => ({ x: Date.parse(r.timestamp), y: r.value });
   const datasets = [];
   if (forecast && forecast.hourly && forecast.hourly.length) {
@@ -421,40 +421,47 @@ function readingsDatasets(rows, forecast) {
   const real = rows.filter((r) => r.source !== "simulated").map(point);
   if (simulated.length) datasets.push({ label: "Simulated readings", type: "scatter", data: simulated, backgroundColor: "rgba(242,164,58,.75)", borderColor: "#f2a43a", pointRadius: 3, order: 1 });
   if (real.length) datasets.push({ label: "Measured readings", type: "scatter", data: real, backgroundColor: "#1a9e5c", borderColor: "#1a9e5c", pointRadius: 3.5, order: 0 });
+  if (cloudRows.length) datasets.push({ label: "Sky camera cloud %", type: "line", yAxisID: "y2", data: cloudRows.map((r) => ({ x: Date.parse(r.timestamp), y: Math.round(r.value * 100) })), borderColor: "#8a63d2", backgroundColor: "#8a63d2", pointRadius: 4, borderWidth: 1.5, tension: 0, order: 0 });
   return datasets;
 }
 
 async function refreshReadingsChart() {
   const canvas = document.getElementById("readings-chart");
   if (!canvas) return;
-  let rows = [];
+  let rows = [], cloudRows = [];
   try {
-    const response = await fetch(`/api/readings?type=power_w&hours=${READINGS_HOURS}`);
-    if (response.ok) rows = await response.json();
+    const [power, cloud] = await Promise.all([
+      fetch(`/api/readings?type=power_w&hours=${READINGS_HOURS}`),
+      fetch(`/api/readings?type=cloud_fraction&source=camera&hours=${READINGS_HOURS}`),
+    ]);
+    if (power.ok) rows = await power.json();
+    if (cloud.ok) cloudRows = await cloud.json();
   } catch (error) { return; }  // keep what is on screen; the next poll tries again
-  const tag = readingsTag(rows);
+  const tag = readingsTag(rows.concat(cloudRows));
   const badge = document.getElementById("readings-tag");
   badge.textContent = tag.text;
   badge.classList.toggle("tag-sim", tag.simulated);
-  document.getElementById("readings-empty").hidden = rows.length > 0;
-  canvas.hidden = rows.length === 0;
+  const any = rows.length + cloudRows.length > 0;
+  document.getElementById("readings-empty").hidden = any;
+  canvas.hidden = !any;
   if (readingsChart) { readingsChart.destroy(); readingsChart = null; }
-  if (!rows.length) return;
+  if (!any) return;
   const dark = document.body.classList.contains("dark-theme");
   const grid = dark ? "#22323c" : "#edf0f1", tick = dark ? "#8fa0ac" : "#77818a";
   const clock = (value) => new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   readingsChart = new Chart(canvas, {
     type: "scatter",
-    data: { datasets: readingsDatasets(rows, lastForecast) },
+    data: { datasets: readingsDatasets(rows, lastForecast, cloudRows) },
     options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: "nearest", intersect: false },
       plugins: { legend: { display: true, labels: { color: tick, boxWidth: 8, boxHeight: 8, font: { size: 10 } } }, tooltip: { callbacks: { title: (items) => clock(items[0].parsed.x) } } },
-      scales: { x: { type: "linear", grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8, callback: clock } }, y: { grid: { color: grid }, ticks: { color: tick }, title: { display: true, text: "W", color: tick } } } },
+      scales: { x: { type: "linear", grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8, callback: clock } }, y: { grid: { color: grid }, ticks: { color: tick }, title: { display: true, text: "W", color: tick } },
+        y2: { display: cloudRows.length > 0, position: "right", min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { color: tick }, title: { display: true, text: "cloud %", color: tick } } } },
   });
 }
 
 function startReadingsPolling() {
   refreshReadingsChart();
-  if (!readingsTimer) readingsTimer = setInterval(() => { if (!document.hidden) refreshReadingsChart(); }, READINGS_POLL_MS);
+  if (!readingsTimer) readingsTimer = setInterval(() => { if (!document.hidden) { refreshReadingsChart(); refreshCameraChip(); } }, READINGS_POLL_MS);
 }
 
 let explainToken = 0;
