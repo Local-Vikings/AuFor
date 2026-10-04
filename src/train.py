@@ -1,94 +1,137 @@
-import os
-import glob
+import random
+from pathlib import Path
+
 import numpy as np
+import optuna
 import torch
-from torch.utils.data import DataLoader
-from torch.amp import autocast, GradScaler
-from tqdm import tqdm
 
-from dataset import SkyDataset, get_transforms
+from dataset import get_dataloaders
+from loss import CloudLoss
 from model import build_model
-from loss import criterion
-from metrics import iou
+
+ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = str(ROOT / "data")
+CHECKPOINT_DIR = ROOT / "checkpoints"
+CHECKPOINT_DIR.mkdir(exist_ok=True)
+BEST_PATH = CHECKPOINT_DIR / "best.pth"
+
+BEST_IOU = 0.0
 
 
-DATA = "../data"
-CKPT = "../checkpoints"
-os.makedirs(CKPT, exist_ok=True)
+def seed_everything(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
-IMG_SIZE = 384
-BATCH = 4
-ACCUM = 2
-EPOCHS = 40
-LR = 1e-4
 
-imgs = sorted(glob.glob(f"{DATA}/images/*"))
-masks = sorted(glob.glob(f"{DATA}/masks/*"))
-assert len(imgs) == len(masks)
-ib = [os.path.splitext(os.path.basename(p))[0] for p in imgs]
-mb = [os.path.splitext(os.path.basename(p))[0] for p in masks]
-assert ib == mb
+def compute_iou(pred_logits, target_mask, threshold):
+    valid = target_mask != 255
+    if not valid.any():
+        return 0.0
 
-n = len(imgs)
-idx = np.random.permutation(n)
-tr = idx[:int(0.8 * n)]
-va = idx[int(0.8 * n):int(0.9 * n)]
-te = idx[int(0.9 * n):]
+    preds = (torch.sigmoid(pred_logits) > threshold).float()[valid]
+    targets = target_mask[valid].float()
+    if preds.numel() == 0:
+        return 0.0
 
-train_tf, val_tf = get_transforms(IMG_SIZE)
-train_ds = SkyDataset([imgs[i] for i in tr], [masks[i] for i in tr], train_tf)
-val_ds = SkyDataset([imgs[i] for i in va], [masks[i] for i in va], val_tf)
-test_ds = SkyDataset([imgs[i] for i in te], [masks[i] for i in te], val_tf)
+    intersection = (preds * targets).sum()
+    union = ((preds + targets) > 0).float().sum()
+    return (intersection + 1e-6) / (union + 1e-6)
 
-train_loader = DataLoader(train_ds, batch_size=BATCH, shuffle=True, num_workers=4)
-val_loader = DataLoader(val_ds, batch_size=BATCH, shuffle=False, num_workers=4)
-test_loader = DataLoader(test_ds, batch_size=BATCH, shuffle=False, num_workers=4)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = build_model().to(device)
+def objective(trial):
+    global BEST_IOU
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
-scaler = GradScaler("cuda")
+    seed_everything(42)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-best = 1e9
-for epoch in range(EPOCHS):
-    model.train()
-    optimizer.zero_grad(set_to_none=True)
-    for i, (x, y) in enumerate(tqdm(train_loader, desc=f"train {epoch+1}")):
-        x, y = x.to(device), y.to(device)
-        with autocast("cuda"):
-            loss = criterion(model(x), y) / ACCUM
-        scaler.scale(loss).backward()
-        if (i + 1) % ACCUM == 0:
+    lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
+    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
+    tversky_beta = trial.suggest_float("tversky_beta", 0.5, 0.9)
+    threshold = trial.suggest_float("threshold", 0.2, 0.5)
+    epochs = 18
+
+    model = build_model().to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    criterion = CloudLoss(alpha=0.3, beta=tversky_beta, gamma=2.0)
+    train_loader, val_loader = get_dataloaders(batch_size=8, data_dir=DATA_DIR, image_size=512)
+
+    trial_best_iou = 0.0
+    amp = torch.cuda.is_available()
+    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+        try:
+            scaler = torch.amp.GradScaler("cuda", enabled=amp)
+        except TypeError:
+            scaler = torch.amp.GradScaler(enabled=amp)
+        autocast_ctx = lambda: torch.amp.autocast("cuda", enabled=amp)
+    else:
+        scaler = torch.cuda.amp.GradScaler(enabled=amp)
+        autocast_ctx = lambda: torch.cuda.amp.autocast(enabled=amp)
+
+    for epoch in range(epochs):
+        model.train()
+        for images, masks in train_loader:
+            images = images.to(device)
+            masks = masks.to(device)
+
+            optimizer.zero_grad()
+            with autocast_ctx():
+                outputs = model(images)
+                loss = criterion(outputs, masks)
+            scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
-            optimizer.zero_grad(set_to_none=True)
-    scheduler.step()
 
-    model.eval()
-    vloss, vious = 0.0, []
-    with torch.no_grad():
-        for x, y in val_loader:
-            x, y = x.to(device), y.to(device)
-            with autocast("cuda"):
-                logits = model(x)
-                vloss += criterion(logits, y).item()
-            vious.append(iou(torch.sigmoid(logits.float()), y))
-    vloss /= len(val_loader)
-    print(f"epoch {epoch+1} val_loss {vloss:.4f} IoU {np.mean(vious):.4f}")
+        model.eval()
+        epoch_iou = 0.0
+        batches = 0
 
-    if vloss < best:
-        best = vloss
-        torch.save(model.state_dict(), f"{CKPT}/best.pth")
+        with torch.no_grad():
+            for images, masks in val_loader:
+                images = images.to(device)
+                masks = masks.to(device)
 
-model.load_state_dict(torch.load(f"{CKPT}/best.pth"))
-model.eval()
-test_ious = []
-with torch.no_grad():
-    for x, y in test_loader:
-        x, y = x.to(device), y.to(device)
-        with autocast("cuda"):
-            logits = model(x)
-        test_ious.append(iou(torch.sigmoid(logits.float()), y))
-print(f"TEST IoU: {np.mean(test_ious):.4f}")
+                outputs = model(images)
+                batch_iou = compute_iou(outputs, masks, threshold)
+                epoch_iou += batch_iou.item()
+                batches += 1
+
+        if batches == 0:
+            continue
+
+        val_iou = epoch_iou / batches
+        if val_iou > trial_best_iou:
+            trial_best_iou = val_iou
+
+        trial.report(val_iou, epoch)
+        scheduler.step()
+
+        if trial.should_prune():
+            raise optuna.exceptions.TrialPruned()
+
+    if trial_best_iou > BEST_IOU:
+        BEST_IOU = trial_best_iou
+        torch.save(model.state_dict(), BEST_PATH)
+        print(f"New best IoU: {BEST_IOU:.4f} saved to {BEST_PATH}")
+
+    return trial_best_iou
+
+
+def main():
+    study = optuna.create_study(
+        direction="maximize",
+        sampler=optuna.samplers.TPESampler(seed=42),
+    )
+    study.optimize(objective, n_trials=30)
+    print("\n=== OPTUNA TUNING COMPLETE ===")
+    print(f"Best Trial Value (IoU): {study.best_value:.4f}")
+    print(f"Best Parameters: {study.best_params}")
+
+
+if __name__ == "__main__":
+    main()
