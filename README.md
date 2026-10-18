@@ -1,7 +1,7 @@
 # AuFor
 
 ## Demo
-[aufor.0red.me](https://aufor.0red.me/)
+[aufor.main.slav.0red.me](https://aufor.main.slav.0red.me/)
 
 ## Presentation
 [Presentation (pptx)](docs/presentation.pptx)
